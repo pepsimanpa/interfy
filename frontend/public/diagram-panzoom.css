@@ -1,0 +1,99 @@
+/* Interfy diagram camera: wheel zoom, blank-canvas pan, fit, and 1:1 reset. */
+.design-svg-wrap {
+  position: relative;
+}
+
+.design-network.interfy-camera-ready {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.design-network.interfy-camera-ready.interfy-camera-panning {
+  cursor: grabbing;
+}
+
+.design-network.interfy-camera-ready .design-node,
+.design-network.interfy-camera-ready .design-edge {
+  cursor: pointer;
+}
+
+.interfy-diagram-camera {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid #d6dae0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 10px rgba(20, 30, 45, 0.12);
+  backdrop-filter: blur(6px);
+}
+
+.interfy-camera-button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #344054;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.interfy-camera-button:hover {
+  background: #eef1f5;
+}
+
+.interfy-camera-text-button {
+  min-width: auto;
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.interfy-camera-zoom-label {
+  min-width: 44px;
+  padding: 0 4px;
+  color: #667085;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .interfy-diagram-camera {
+  border-color: #3e3e42;
+  background: rgba(37, 37, 38, 0.94);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme="dark"] .interfy-camera-button {
+  color: #cccccc;
+}
+
+:root[data-theme="dark"] .interfy-camera-button:hover {
+  background: #2a2d2e;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .interfy-camera-zoom-label {
+  color: #9d9d9d;
+}
+
+@media (max-width: 760px) {
+  .interfy-diagram-camera {
+    right: 8px;
+    bottom: 8px;
+  }
+
+  .interfy-camera-text-button {
+    display: none;
+  }
+}
