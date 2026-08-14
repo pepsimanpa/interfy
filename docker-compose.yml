@@ -1,0 +1,60 @@
+name: interfy
+
+services:
+  db:
+    image: interfy-postgres:16
+    container_name: interfy-db
+    environment:
+      POSTGRES_DB: message_manager
+      POSTGRES_USER: message_user
+      POSTGRES_PASSWORD: message_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - interfy_db_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U message_user -d message_manager"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - interfy_network
+
+  backend:
+    image: interfy-backend:latest
+    build: ./backend
+    container_name: interfy-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://message_user:message_password@db:5432/message_manager
+      JWT_SECRET: change-this-secret-in-production
+      ADMIN_EMAIL: admin
+      ADMIN_PASSWORD: admin1234
+      CORS_ORIGIN_REGEX: "^https?://.*:3000$"
+    ports:
+      - "8000:8000"
+    networks:
+      - interfy_network
+
+  frontend:
+    image: interfy-frontend:latest
+    build: ./frontend
+    container_name: interfy-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: auto
+    networks:
+      - interfy_network
+
+volumes:
+  interfy_db_volume:
+    name: interfy_db_volume
+
+networks:
+  interfy_network:
+    name: interfy_network
