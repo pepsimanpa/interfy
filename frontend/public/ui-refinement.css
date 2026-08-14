@@ -129,15 +129,16 @@ select {
 }
 
 /* Button order among direct sidebar buttons:
-   1 back, 2 design, 3 output, 4 settings, 5 history, 6 account. */
+   1 back, 2 design, 3 output, 4 settings, 5 history, 6 account.
+   Visual bottom order: history -> settings -> account. */
 .message-sidebar.compact-sidebar > button.side-nav:nth-of-type(2) { order: 10; }
 .message-sidebar.compact-sidebar > button.side-nav:nth-of-type(3) { order: 11; }
 .message-sidebar.compact-sidebar > button.side-nav:nth-of-type(5) {
   order: 100;
   margin-top: auto;
 }
-.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(6) { order: 101; }
-.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(4) { order: 102; }
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(4) { order: 101; }
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(6) { order: 102; }
 
 /* Light theme: subtle neutral navigation selection. */
 .message-sidebar.compact-sidebar > .side-nav:hover {
