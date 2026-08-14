@@ -1,0 +1,258 @@
+/* Interfy UI refinement
+   Frame/sidebar typography pass. Loaded after the application stylesheet. */
+
+:root {
+  font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Keep the application navigation rail at a stable desktop width. */
+.manager-page.compact-navigation {
+  grid-template-columns: 232px minmax(0, 1fr) !important;
+}
+
+.message-sidebar.compact-sidebar {
+  padding: 8px;
+  gap: 4px;
+  overflow-x: hidden;
+}
+
+/* Lightweight product header, similar in proportion to modern workflow tools. */
+.message-sidebar.compact-sidebar::before {
+  content: "Interfy";
+  order: 0;
+  flex: 0 0 auto;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: #172033;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar::before {
+  color: #f2f2f2;
+}
+
+/* Existing sidebar structure is retained, but presented as a flat navigation rail. */
+.message-sidebar.compact-sidebar > .message-tree-title {
+  display: none;
+}
+
+.message-sidebar.compact-sidebar > .back-button {
+  order: 1;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.message-sidebar.compact-sidebar > .side-project-card {
+  order: 2;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  background: transparent;
+}
+
+.message-sidebar.compact-sidebar > .side-project-card .eyebrow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 400;
+}
+
+.message-sidebar.compact-sidebar > .side-project-card h2 {
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.message-sidebar.compact-sidebar > .side-project-card > p:last-child {
+  display: none;
+}
+
+.message-sidebar.compact-sidebar > .search-box {
+  order: 3;
+  min-height: 36px;
+  margin: 4px 0 8px;
+  padding: 0 9px;
+  gap: 8px;
+  border-radius: 6px;
+}
+
+.message-sidebar.compact-sidebar > .search-box input {
+  min-height: 34px;
+  padding: 7px 0;
+  font-size: 13px;
+}
+
+.message-sidebar.compact-sidebar > .search-box svg,
+.message-sidebar.compact-sidebar > .side-nav svg,
+.message-sidebar.compact-sidebar > .back-button svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.message-sidebar.compact-sidebar > .side-nav {
+  min-height: 40px;
+  padding: 8px 10px;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+/* Button order among direct sidebar buttons:
+   1 back, 2 design, 3 output, 4 settings, 5 history, 6 account. */
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(2) { order: 10; }
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(3) { order: 11; }
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(5) {
+  order: 100;
+  margin-top: auto;
+}
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(6) { order: 101; }
+.message-sidebar.compact-sidebar > button.side-nav:nth-of-type(4) { order: 102; }
+
+/* Light theme: subtle neutral navigation selection. */
+.message-sidebar.compact-sidebar > .side-nav:hover {
+  filter: none;
+  background: #eef1f5;
+}
+
+.message-sidebar.compact-sidebar > .side-nav.active {
+  background: #e7ebf0;
+  color: #172033;
+}
+
+/* Dark theme: reserve blue for primary actions/filters; navigation stays neutral. */
+:root[data-theme="dark"] .message-sidebar.compact-sidebar {
+  background: #242424;
+  border-right-color: #343434;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .back-button,
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .search-box {
+  background: transparent;
+  border-color: #3a3a3a;
+  color: #cccccc;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-project-card {
+  background: transparent;
+  border-color: transparent;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-project-card h2 {
+  color: #f0f0f0;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-project-card p {
+  color: #8f8f8f;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-nav {
+  color: #d6d6d6;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-nav:hover {
+  background: #2b2b2b;
+  color: #f0f0f0;
+  filter: none;
+}
+
+:root[data-theme="dark"] .message-sidebar.compact-sidebar > .side-nav.active {
+  background: #303030;
+  color: #ffffff;
+}
+
+/* Top bar proportions: less dashboard-like, more workspace-like. */
+.manager-topbar {
+  min-height: 68px;
+  padding: 10px 20px;
+  gap: 16px;
+  flex-direction: row !important;
+  align-items: center !important;
+}
+
+.manager-topbar .eyebrow {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.landing-title h1,
+.manager-topbar h1 {
+  margin-top: 3px;
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.manager-topbar .user-box {
+  gap: 6px;
+  font-size: 12px;
+}
+
+.manager-topbar .user-box > button {
+  min-height: 34px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.manager-topbar .user-box > button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Keep the fixed rail on normal desktop widths; collapse only for genuinely narrow screens. */
+@media (max-width: 760px) {
+  .manager-page.compact-navigation {
+    grid-template-columns: 1fr !important;
+  }
+
+  .message-sidebar.compact-sidebar {
+    height: auto;
+  }
+
+  .message-sidebar.compact-sidebar::before {
+    min-height: 40px;
+  }
+
+  .message-sidebar.compact-sidebar > button.side-nav:nth-of-type(5) {
+    margin-top: 8px;
+  }
+
+  .manager-topbar {
+    min-height: 0;
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+}
