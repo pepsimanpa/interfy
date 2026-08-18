@@ -25,7 +25,7 @@
   z-index: 8;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   padding: 4px;
   border: 1px solid #d6dae0;
   border-radius: 8px;
@@ -34,25 +34,36 @@
   backdrop-filter: blur(6px);
 }
 
-.interfy-camera-button {
+/*
+ * These controls are workspace tools rather than primary actions.
+ * Keep them neutral even when the application's global button style is blue.
+ */
+.design-svg-wrap .interfy-diagram-camera .interfy-camera-button {
   min-width: 30px;
   height: 30px;
   padding: 0 8px;
-  border: 0;
+  border: 1px solid #d6dae0 !important;
   border-radius: 5px;
-  background: transparent;
-  color: #344054;
+  background: #f4f5f7 !important;
+  color: #344054 !important;
+  box-shadow: none !important;
   font-size: 16px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }
 
-.interfy-camera-button:hover {
-  background: #eef1f5;
+.design-svg-wrap .interfy-diagram-camera .interfy-camera-button:hover,
+.design-svg-wrap .interfy-diagram-camera .interfy-camera-button:focus,
+.design-svg-wrap .interfy-diagram-camera .interfy-camera-button:active {
+  border-color: #c6cbd2 !important;
+  background: #e9ecf0 !important;
+  color: #1f2937 !important;
+  box-shadow: none !important;
+  filter: none !important;
 }
 
-.interfy-camera-text-button {
+.design-svg-wrap .interfy-diagram-camera .interfy-camera-text-button {
   min-width: auto;
   font-size: 12px;
   font-weight: 550;
@@ -68,19 +79,37 @@
   pointer-events: none;
 }
 
+/* Replace the somewhat ambiguous focus label with a more explicit description. */
+.design-focus-badge {
+  font-size: 0 !important;
+}
+
+.design-focus-badge::after {
+  content: "선택 노드 중심 보기";
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 :root[data-theme="dark"] .interfy-diagram-camera {
   border-color: #3e3e42;
   background: rgba(37, 37, 38, 0.94);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28);
 }
 
-:root[data-theme="dark"] .interfy-camera-button {
-  color: #cccccc;
+:root[data-theme="dark"] .design-svg-wrap .interfy-diagram-camera .interfy-camera-button {
+  border-color: #454549 !important;
+  background: #303033 !important;
+  color: #cccccc !important;
 }
 
-:root[data-theme="dark"] .interfy-camera-button:hover {
-  background: #2a2d2e;
-  color: #ffffff;
+:root[data-theme="dark"] .design-svg-wrap .interfy-diagram-camera .interfy-camera-button:hover,
+:root[data-theme="dark"] .design-svg-wrap .interfy-diagram-camera .interfy-camera-button:focus,
+:root[data-theme="dark"] .design-svg-wrap .interfy-diagram-camera .interfy-camera-button:active {
+  border-color: #55555a !important;
+  background: #3a3a3d !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+  filter: none !important;
 }
 
 :root[data-theme="dark"] .interfy-camera-zoom-label {
