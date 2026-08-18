@@ -274,6 +274,14 @@
     attributeObserver.observe(svg, { attributes: true, attributeFilter: ['viewBox'] });
   }
 
+  function simplifyRelationMessageCountLabels() {
+    document.querySelectorAll(`${SVG_SELECTOR} .design-edge-label text`).forEach(text => {
+      const current = text.textContent || '';
+      const next = current.replace(/(^| · )메시지\s+(\d+)(?=$| · )/g, '$1$2');
+      if (next !== current) text.textContent = next;
+    });
+  }
+
   function scan() {
     document.querySelectorAll('.interfy-diagram-camera').forEach(controls => {
       if (!controls.parentElement?.querySelector(SVG_SELECTOR)) controls.remove();
@@ -283,6 +291,7 @@
       const state = states.get(svg);
       if (state) ensureControls(state);
     });
+    simplifyRelationMessageCountLabels();
   }
 
   let scanQueued = false;
