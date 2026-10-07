@@ -231,7 +231,7 @@ class MessageField(Base):
     variable_name = Column(String(120), nullable=True)
     description = Column(Text, default="")
     purpose = Column(Text, default="")
-    value_range = Column(String(255), default="")
+    value_range = Column(Text, default="")
     unit = Column(String(120), default="")
     note = Column(Text, default="")
     is_array = Column(Boolean, default=False, nullable=False)
