@@ -1389,12 +1389,12 @@ body.design-resizing * { cursor: row-resize !important; }
 .partial-status.new { background: #ecfdf5; color: #047857; }
 .partial-status.changed { background: #fff7ed; color: #c2410c; }
 .partial-status.same { background: #f1f5f9; color: #64748b; }
-.partial-update-compare-card { display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+.partial-update-compare-card { display: flex; flex-direction: column; }
 .partial-update-compare-head { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .partial-update-compare-head h3 { margin: 1px 0 2px; font-size: 16px; }
 .partial-update-compare-head > div > span { color: #64748b; font-size: 12px; }
 .partial-dependency-note { padding: 8px 14px; background: #fffbeb; border-bottom: 1px solid #fde68a; color: #92400e; font-size: 12px; }
-.partial-diff-list { min-height: 0; overflow: auto; padding: 10px 14px 16px; display: grid; align-content: start; gap: 5px; }
+.partial-diff-list { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 10px 14px 16px; display: grid; align-content: start; gap: 5px; }
 .partial-diff { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px; align-items: start; padding: 7px 9px; border-radius: 6px; font-size: 12px; }
 .partial-diff-mark { font-weight: 900; font-size: 15px; line-height: 1.25; }
 .partial-diff small { display: block; margin-bottom: 1px; opacity: .72; font-size: 10px; font-weight: 750; }
