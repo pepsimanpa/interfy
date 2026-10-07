@@ -1884,12 +1884,15 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [changedOnly, setChangedOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [infocodeOverrides, setInfocodeOverrides] = useState({});
+  const [conflictEditor, setConflictEditor] = useState(null);
 
   const rows = preview?.messages || [];
   const visibleRows = changedOnly ? rows.filter(row => row.status !== 'SAME') : rows;
   const selectedRow = rows.find(row => row.struct_name === selectedName) || visibleRows[0] || null;
   const checkedRows = rows.filter(row => checkedNames.has(row.struct_name) && row.status !== 'SAME');
   const selectedDeleteCount = checkedRows.reduce((sum, row) => sum + (row.diffs || []).filter(diff => diff.kind === 'DELETE').length, 0);
+  const selectedConflictCount = checkedRows.filter(row => (row.infocode_conflicts || []).length > 0).length;
 
   function statusText(status) {
     if (status === 'NEW') return '신규';
@@ -1897,19 +1900,31 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     return '동일';
   }
 
-  async function previewFile(nextFile) {
+  function hasOverride(structName) {
+    return Object.prototype.hasOwnProperty.call(infocodeOverrides, structName);
+  }
+
+  async function previewFile(nextFile, overrides = {}, preserveSelection = false) {
     if (!nextFile) return;
     setBusy(true);
     setNotice('');
     try {
       const formData = new FormData();
       formData.append('file', nextFile);
+      formData.append('infocode_overrides', JSON.stringify(overrides));
       const result = await api.postForm(`/projects/${projectId}/partial-update/preview`, formData);
       setFile(nextFile);
       setPreview(result);
-      setCheckedNames(new Set());
-      const firstActionable = (result.messages || []).find(row => row.status !== 'SAME') || result.messages?.[0];
-      setSelectedName(firstActionable?.struct_name || '');
+
+      if (!preserveSelection) {
+        setCheckedNames(new Set());
+        const firstActionable = (result.messages || []).find(row => row.status !== 'SAME') || result.messages?.[0];
+        setSelectedName(firstActionable?.struct_name || '');
+      } else {
+        const names = new Set((result.messages || []).map(row => row.struct_name));
+        setCheckedNames(current => new Set([...current].filter(name => names.has(name))));
+        setSelectedName(current => names.has(current) ? current : ((result.messages || [])[0]?.struct_name || ''));
+      }
     } finally {
       setBusy(false);
     }
@@ -1918,7 +1933,11 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   async function chooseFile(event) {
     const nextFile = event.target.files?.[0];
     event.target.value = '';
-    if (nextFile) await previewFile(nextFile);
+    if (!nextFile) return;
+
+    setInfocodeOverrides({});
+    setConflictEditor(null);
+    await previewFile(nextFile, {}, false);
   }
 
   function toggleChecked(row) {
@@ -1939,19 +1958,58 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     });
   }
 
+  function openInfocodeEditor(row) {
+    if (!row) return;
+    setConflictEditor({
+      row,
+      value: hasOverride(row.struct_name) ? infocodeOverrides[row.struct_name] : (row.infocode || ''),
+      error: '',
+    });
+  }
+
+  async function saveInfocodeOverride() {
+    if (!conflictEditor || !file) return;
+    const value = String(conflictEditor.value ?? '').trim();
+    if (value && !/^\d+$/.test(value)) {
+      setConflictEditor(current => ({ ...current, error: '정보코드는 숫자만 입력할 수 있습니다.' }));
+      return;
+    }
+
+    const next = { ...infocodeOverrides, [conflictEditor.row.struct_name]: value };
+    setInfocodeOverrides(next);
+    setConflictEditor(null);
+    await previewFile(file, next, true);
+  }
+
+  async function resetInfocodeOverride(row) {
+    if (!file || !row || !hasOverride(row.struct_name)) return;
+    const next = { ...infocodeOverrides };
+    delete next[row.struct_name];
+    setInfocodeOverrides(next);
+    setConflictEditor(null);
+    await previewFile(file, next, true);
+  }
+
   async function applySelected() {
     if (!file || checkedRows.length === 0) return;
+    if (selectedConflictCount > 0) {
+      alert('선택한 메시지에 정보코드 충돌이 있습니다. 충돌 항목의 정보코드를 수정한 뒤 다시 적용하세요.');
+      return;
+    }
+
     const deleteText = selectedDeleteCount > 0 ? `\n삭제되는 항목 ${selectedDeleteCount}건이 포함되어 있습니다.` : '';
     if (!confirm(`선택한 ${checkedRows.length}개 메시지를 현재 프로젝트에 반영할까요?${deleteText}\n\n체크하지 않은 메시지는 변경되지 않습니다.`)) return;
+
     setBusy(true);
     setNotice('');
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('selected_names', JSON.stringify(checkedRows.map(row => row.struct_name)));
+      formData.append('infocode_overrides', JSON.stringify(infocodeOverrides));
       const result = await api.postForm(`/projects/${projectId}/partial-update/apply`, formData);
       await onApplied?.();
-      await previewFile(file);
+      await previewFile(file, infocodeOverrides, true);
       setNotice(`${result.updated_count}개 메시지를 반영했습니다. 이력 관리에 부분 업데이트 기록이 저장되었습니다.`);
     } finally {
       setBusy(false);
@@ -1988,6 +2046,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
             <div><span>신규</span><strong>{preview.summary?.new || 0}</strong></div>
             <div><span>변경</span><strong>{preview.summary?.changed || 0}</strong></div>
             <div><span>동일</span><strong>{preview.summary?.same || 0}</strong></div>
+            <div><span>충돌</span><strong className={preview.summary?.conflicts ? 'partial-conflict-count' : ''}>{preview.summary?.conflicts || 0}</strong></div>
             <div><span>선택</span><strong>{checkedRows.length}</strong></div>
           </div>
 
@@ -2018,7 +2077,10 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
                       <strong>{row.struct_name}</strong>
                       <span>{row.name || '-'}</span>
                     </div>
-                    <span className={`partial-status ${row.status.toLowerCase()}`}>{statusText(row.status)}</span>
+                    <div className="partial-update-row-badges">
+                      {(row.infocode_conflicts || []).length > 0 && <span className="partial-conflict-badge">코드 충돌</span>}
+                      <span className={`partial-status ${row.status.toLowerCase()}`}>{statusText(row.status)}</span>
+                    </div>
                   </div>
                 ))}
                 {visibleRows.length === 0 && <div className="muted partial-update-no-rows">표시할 메시지가 없습니다.</div>}
@@ -2032,9 +2094,36 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
                     <div><p className="eyebrow">{selectedRow.definition_type === 'ENUM' ? 'ENUM' : 'MESSAGE'}</p><h3>{selectedRow.struct_name}</h3><span>{selectedRow.name}</span></div>
                     <span className={`partial-status ${selectedRow.status.toLowerCase()}`}>{statusText(selectedRow.status)}</span>
                   </div>
+
+                  {(selectedRow.infocode_conflicts || []).length > 0 && (
+                    <div className="partial-infocode-conflict">
+                      <div>
+                        <strong>정보코드 {selectedRow.infocode || '-'} 충돌</strong>
+                        {(selectedRow.infocode_conflicts || []).map((conflict, index) => (
+                          <span key={`${conflict.existing_struct_name}-${index}`}>
+                            기존 저장 구조체: <b>{conflict.existing_struct_name}</b>{conflict.existing_name ? ` (${conflict.existing_name})` : ''}
+                          </span>
+                        ))}
+                        <small>신규/업데이트 구조체 {selectedRow.struct_name}의 정보코드를 수정하면 이번 부분 업데이트에만 적용됩니다.</small>
+                      </div>
+                      <button type="button" className="ghost" onClick={() => openInfocodeEditor(selectedRow)}>정보코드 수정</button>
+                    </div>
+                  )}
+
+                  {(selectedRow.infocode_conflicts || []).length === 0 && hasOverride(selectedRow.struct_name) && (
+                    <div className="partial-infocode-resolved">
+                      <span>이번 업데이트 정보코드: <strong>{infocodeOverrides[selectedRow.struct_name] || '미지정'}</strong></span>
+                      <div className="button-row compact">
+                        <button type="button" className="ghost" onClick={() => openInfocodeEditor(selectedRow)}>다시 수정</button>
+                        <button type="button" className="ghost" onClick={() => resetInfocodeOverride(selectedRow)}>원본 값 사용</button>
+                      </div>
+                    </div>
+                  )}
+
                   {selectedRow.dependencies?.length > 0 && (
                     <div className="partial-dependency-note">신규 참조 자료형: {selectedRow.dependencies.join(', ')} · 신규 자료형인 경우 함께 체크해야 적용할 수 있습니다.</div>
                   )}
+
                   <div className="partial-diff-list">
                     {(selectedRow.diffs || []).map((diff, index) => (
                       <div key={`${diff.kind}-${index}`} className={`partial-diff ${diff.kind.toLowerCase()}`}>
@@ -2052,14 +2141,58 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
           <div className="partial-update-applybar card">
             <div>
               <strong>선택 {checkedRows.length}개</strong>
-              <span>{selectedDeleteCount > 0 ? ` · 삭제 항목 ${selectedDeleteCount}건 포함` : ' · 삭제 항목 없음'}</span>
+              <span>
+                {selectedDeleteCount > 0 ? ` · 삭제 항목 ${selectedDeleteCount}건 포함` : ' · 삭제 항목 없음'}
+                {selectedConflictCount > 0 ? ` · 정보코드 충돌 ${selectedConflictCount}건` : ''}
+              </span>
             </div>
             <div className="button-row compact">
               <button type="button" className="ghost" onClick={onBack}>취소</button>
-              <button type="button" disabled={busy || checkedRows.length === 0} onClick={applySelected}>{busy ? '처리 중...' : `선택한 ${checkedRows.length}개 업데이트`}</button>
+              <button type="button" disabled={busy || checkedRows.length === 0 || selectedConflictCount > 0} onClick={applySelected}>
+                {busy ? '처리 중...' : selectedConflictCount > 0 ? '정보코드 충돌 해결 필요' : `선택한 ${checkedRows.length}개 업데이트`}
+              </button>
             </div>
           </div>
         </>
+      )}
+
+      {conflictEditor && (
+        <div className="partial-infocode-modal-backdrop" onMouseDown={() => setConflictEditor(null)}>
+          <div className="partial-infocode-modal card" role="dialog" aria-modal="true" aria-label="정보코드 충돌 해결" onMouseDown={event => event.stopPropagation()}>
+            <div>
+              <p className="eyebrow">정보코드 충돌 해결</p>
+              <h3>{conflictEditor.row.struct_name}</h3>
+              <p>
+                현재 정보코드 <strong>{conflictEditor.row.infocode || '-'}</strong>
+                {(conflictEditor.row.infocode_conflicts || []).length > 0 && (
+                  <> · 기존 사용 구조체 <strong>{conflictEditor.row.infocode_conflicts.map(item => item.existing_struct_name).join(', ')}</strong></>
+                )}
+              </p>
+            </div>
+            <label>
+              신규/업데이트 정보코드
+              <input
+                autoFocus
+                maxLength={60}
+                inputMode="numeric"
+                value={conflictEditor.value}
+                onChange={event => setConflictEditor(current => ({ ...current, value: event.target.value.replace(/[^0-9]/g, ''), error: '' }))}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    saveInfocodeOverride();
+                  }
+                }}
+              />
+            </label>
+            {conflictEditor.error && <div className="partial-infocode-error">{conflictEditor.error}</div>}
+            <p className="muted small">입력한 값은 원본 JSON을 수정하지 않고 이번 부분 업데이트에만 사용됩니다. 빈 값으로 두면 정보코드를 미지정으로 적용합니다.</p>
+            <div className="button-row partial-infocode-modal-actions">
+              <button type="button" className="ghost" onClick={() => setConflictEditor(null)}>취소</button>
+              <button type="button" disabled={busy} onClick={saveInfocodeOverride}>수정하고 비교 다시 하기</button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

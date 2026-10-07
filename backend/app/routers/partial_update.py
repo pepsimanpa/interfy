@@ -68,6 +68,78 @@ def _normalize_target_names(values: list[str] | None) -> list[str]:
     return sorted(seen.values(), key=lambda item: item.lower())
 
 
+def _parse_infocode_overrides(raw: str | None) -> dict[str, str]:
+    text = str(raw or "").strip()
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except Exception:
+        raise HTTPException(status_code=422, detail="정보코드 수정값 형식이 올바르지 않습니다.")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="정보코드 수정값은 메시지별 객체 형식이어야 합니다.")
+
+    overrides: dict[str, str] = {}
+    for raw_name, raw_code in payload.items():
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        code = str(raw_code or "").strip()
+        if code and not code.isdigit():
+            raise HTTPException(status_code=422, detail=f"{name}의 정보코드는 숫자만 가능합니다.")
+        if len(code) > 60:
+            raise HTTPException(status_code=422, detail=f"{name}의 정보코드는 60자를 초과할 수 없습니다.")
+        overrides[name.lower()] = code
+    return overrides
+
+
+def _apply_infocode_overrides(
+    incoming_messages: list[dict[str, Any]],
+    overrides: dict[str, str],
+) -> None:
+    if not overrides:
+        return
+    incoming_by_name = {message["struct_name"].lower(): message for message in incoming_messages}
+    unknown = sorted(set(overrides) - set(incoming_by_name))
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail=f"가져온 JSON에 없는 메시지의 정보코드 수정값이 포함되어 있습니다: {', '.join(unknown)}",
+        )
+    for key, code in overrides.items():
+        incoming_by_name[key]["infocode"] = code or None
+
+
+def _infocode_conflicts(
+    existing_messages: list[Message],
+    incoming_messages: list[dict[str, Any]],
+) -> dict[str, list[dict[str, str]]]:
+    conflicts: dict[str, list[dict[str, str]]] = {}
+    existing_by_code: dict[str, list[Message]] = {}
+    for message in existing_messages:
+        code = str(message.infocode or "").strip()
+        if code:
+            existing_by_code.setdefault(code, []).append(message)
+
+    for incoming in incoming_messages:
+        code = str(incoming.get("infocode") or "").strip()
+        if not code:
+            continue
+        incoming_key = incoming["struct_name"].lower()
+        for existing in existing_by_code.get(code, []):
+            existing_struct = existing.struct_name or existing.name
+            if existing_struct.lower() == incoming_key:
+                continue
+            conflicts.setdefault(incoming_key, []).append({
+                "code": code,
+                "existing_struct_name": existing_struct,
+                "existing_name": existing.name or "",
+                "incoming_struct_name": incoming["struct_name"],
+                "incoming_name": incoming.get("name") or "",
+            })
+    return conflicts
+
+
 def _field_from_obj(field: MessageField) -> dict[str, Any]:
     type_kind = str(field.type_kind or "BASIC").upper()
     ref_name = ""
@@ -262,6 +334,7 @@ def _preview_entries(db: Session, project_id: int, incoming_messages: list[dict[
     existing_messages = _load_existing_messages(db, project_id)
     existing_by_name = {(message.struct_name or message.name).lower(): message for message in existing_messages}
     incoming_name_set = {message["struct_name"].lower() for message in incoming_messages}
+    conflicts_by_name = _infocode_conflicts(existing_messages, incoming_messages)
     entries: list[dict[str, Any]] = []
 
     for incoming in sorted(incoming_messages, key=lambda item: item.get("order") or 0):
@@ -282,10 +355,12 @@ def _preview_entries(db: Session, project_id: int, incoming_messages: list[dict[
             "struct_name": incoming["struct_name"],
             "name": incoming["name"],
             "definition_type": incoming["definition_type"],
+            "infocode": incoming.get("infocode") or "",
             "existing_id": existing_obj.id if existing_obj is not None else None,
             "status": status,
             "diffs": diffs,
             "dependencies": sorted(set(dependencies), key=lambda item: item.lower()),
+            "infocode_conflicts": conflicts_by_name.get(incoming["struct_name"].lower(), []),
         })
     return entries
 
@@ -344,7 +419,14 @@ def _validate_final_infocodes(
         if not code_text:
             continue
         if code_text in used:
-            raise HTTPException(status_code=409, detail=f"부분 업데이트 후 정보코드 {code_text}가 중복됩니다: {used[code_text]}, {name}")
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"부분 업데이트 후 정보코드 {code_text}가 중복됩니다. "
+                    f"기존/선행 구조체: {used[code_text]} / 충돌 구조체: {name}. "
+                    "미리보기에서 충돌 구조체의 정보코드를 수정한 뒤 다시 적용하세요."
+                ),
+            )
         used[code_text] = name
 
 
@@ -361,6 +443,7 @@ def _ensure_target(db: Session, project_id: int, name: str, descriptions: dict[s
 async def preview_partial_update(
     project_id: int,
     file: UploadFile = File(...),
+    infocode_overrides: str = Form("{}"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -368,6 +451,8 @@ async def preview_partial_update(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     _data, messages, _targets = await _read_partial_json(file)
+    overrides = _parse_infocode_overrides(infocode_overrides)
+    _apply_infocode_overrides(messages, overrides)
     entries = _preview_entries(db, project_id, messages)
     return {
         "filename": file.filename,
@@ -375,6 +460,7 @@ async def preview_partial_update(
             "new": sum(1 for item in entries if item["status"] == "NEW"),
             "changed": sum(1 for item in entries if item["status"] == "CHANGED"),
             "same": sum(1 for item in entries if item["status"] == "SAME"),
+            "conflicts": sum(1 for item in entries if item.get("infocode_conflicts")),
         },
         "messages": entries,
     }
@@ -385,6 +471,7 @@ async def apply_partial_update(
     project_id: int,
     file: UploadFile = File(...),
     selected_names: str = Form(...),
+    infocode_overrides: str = Form("{}"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -402,6 +489,8 @@ async def apply_partial_update(
         raise HTTPException(status_code=422, detail="업데이트할 메시지를 하나 이상 선택하세요.")
 
     _data, incoming_messages, integration_targets = await _read_partial_json(file)
+    overrides = _parse_infocode_overrides(infocode_overrides)
+    _apply_infocode_overrides(incoming_messages, overrides)
     incoming_by_name = {message["struct_name"].lower(): message for message in incoming_messages}
     missing = sorted(selected_keys - incoming_by_name.keys())
     if missing:
