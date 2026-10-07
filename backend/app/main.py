@@ -56,7 +56,7 @@ def apply_lightweight_migrations():
         _add_column_if_missing(conn, "message_fields", "array_dimensions", "array_dimensions VARCHAR(255)")
         _add_column_if_missing(conn, "message_fields", "variable_name", "variable_name VARCHAR(120)")
         _add_column_if_missing(conn, "message_fields", "purpose", "purpose TEXT")
-        _add_column_if_missing(conn, "message_fields", "value_range", "value_range VARCHAR(255)")
+        _add_column_if_missing(conn, "message_fields", "value_range", "value_range TEXT")
         _add_column_if_missing(conn, "message_fields", "unit", "unit VARCHAR(120)")
         _add_column_if_missing(conn, "message_fields", "note", "note TEXT")
         _add_column_if_missing(conn, "users", "is_deleted", "is_deleted BOOLEAN DEFAULT FALSE NOT NULL")
@@ -69,6 +69,11 @@ def apply_lightweight_migrations():
         _add_column_if_missing(conn, "message_group_items", "order_index", "order_index INTEGER DEFAULT 0 NOT NULL")
 
         if dialect == "postgresql":
+            # value_range may contain multi-line ICD/range descriptions. Older
+            # deployments used VARCHAR(255), which caused imports to fail at
+            # commit time with StringDataRightTruncation.
+            conn.execute(text("ALTER TABLE message_fields ALTER COLUMN value_range TYPE TEXT"))
+
             # The messages.name column is now a human-readable message purpose.
             # It may be duplicated; the actual unique type name remains messages.struct_name.
             conn.execute(text("ALTER TABLE messages DROP CONSTRAINT IF EXISTS uq_project_message_name"))
