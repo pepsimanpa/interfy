@@ -76,18 +76,6 @@ def _parse_partial_mode(raw: str | None, label: str) -> str:
     return mode
 
 
-def _field_merge_equal(existing: dict[str, Any], incoming: dict[str, Any]) -> bool:
-    # Ignore order while deciding whether the same-named field is already identical.
-    # In merge mode, an identical field is kept once; a changed same-named field is
-    # added under a suffixed name so the user can compare/delete it later.
-    for field_name, _label in FIELD_COMPARE_FIELDS:
-        if field_name == "order":
-            continue
-        if (existing.get(field_name) or None) != (incoming.get(field_name) or None):
-            return False
-    return True
-
-
 def _next_merged_field_name(base_name: str, used_names: set[str]) -> str:
     base = str(base_name or "field").strip() or "field"
     if base.lower() not in used_names:
@@ -137,18 +125,14 @@ def _prepare_partial_messages(
             incoming_fields = copy.deepcopy(incoming.get("fields") or [])
             merged_fields = existing_fields
             used_names = {str(field.get("name") or "").lower() for field in merged_fields}
-            existing_by_field_name = {
-                str(field.get("name") or "").lower(): field
-                for field in existing_fields
-            }
             next_order = max([int(field.get("order") or 0) for field in merged_fields] + [-1]) + 1
 
             for incoming_field in incoming_fields:
                 original_name = str(incoming_field.get("name") or "").strip()
-                same_name_existing = existing_by_field_name.get(original_name.lower())
-                if same_name_existing is not None and _field_merge_equal(same_name_existing, incoming_field):
-                    continue
 
+                # Merge mode is intentionally additive. Every incoming field is kept.
+                # If its name already exists, append _1, _2, ... so the user can
+                # compare the old/new definitions in Interfy and delete one later.
                 merged_name = _next_merged_field_name(original_name, used_names)
                 incoming_field["name"] = merged_name
                 incoming_field["variable_name"] = merged_name
