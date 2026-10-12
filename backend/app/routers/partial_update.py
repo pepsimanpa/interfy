@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 from typing import Any
 
@@ -66,6 +67,99 @@ def _normalize_target_names(values: list[str] | None) -> list[str]:
         if text and text.lower() not in seen:
             seen[text.lower()] = text
     return sorted(seen.values(), key=lambda item: item.lower())
+
+
+def _parse_partial_mode(raw: str | None, label: str) -> str:
+    mode = str(raw or "MERGE").strip().upper()
+    if mode not in {"MERGE", "REPLACE"}:
+        raise HTTPException(status_code=422, detail=f"{label} 반영 방식이 올바르지 않습니다.")
+    return mode
+
+
+def _field_merge_equal(existing: dict[str, Any], incoming: dict[str, Any]) -> bool:
+    # Ignore order while deciding whether the same-named field is already identical.
+    # In merge mode, an identical field is kept once; a changed same-named field is
+    # added under a suffixed name so the user can compare/delete it later.
+    for field_name, _label in FIELD_COMPARE_FIELDS:
+        if field_name == "order":
+            continue
+        if (existing.get(field_name) or None) != (incoming.get(field_name) or None):
+            return False
+    return True
+
+
+def _next_merged_field_name(base_name: str, used_names: set[str]) -> str:
+    base = str(base_name or "field").strip() or "field"
+    if base.lower() not in used_names:
+        return base[:120]
+
+    number = 1
+    while True:
+        suffix = f"_{number}"
+        candidate = f"{base[:120 - len(suffix)]}{suffix}"
+        if candidate.lower() not in used_names:
+            return candidate
+        number += 1
+
+
+def _merge_target_names(existing: list[str] | None, incoming: list[str] | None) -> list[str]:
+    combined = list(existing or []) + list(incoming or [])
+    return _normalize_target_names(combined)
+
+
+def _prepare_partial_messages(
+    existing_messages: list[Message],
+    incoming_messages: list[dict[str, Any]],
+    field_mode: str,
+    relation_mode: str,
+) -> list[dict[str, Any]]:
+    existing_by_name = {
+        (message.struct_name or message.name).lower(): _message_from_obj(message)
+        for message in existing_messages
+    }
+    prepared = copy.deepcopy(incoming_messages)
+
+    for incoming in prepared:
+        existing = existing_by_name.get(incoming["struct_name"].lower())
+        if existing is None:
+            continue
+
+        if relation_mode == "MERGE":
+            incoming["tx_targets"] = _merge_target_names(existing.get("tx_targets"), incoming.get("tx_targets"))
+            incoming["rx_targets"] = _merge_target_names(existing.get("rx_targets"), incoming.get("rx_targets"))
+
+        if (
+            field_mode == "MERGE"
+            and existing.get("definition_type") == "STRUCT"
+            and incoming.get("definition_type") == "STRUCT"
+        ):
+            existing_fields = copy.deepcopy(existing.get("fields") or [])
+            incoming_fields = copy.deepcopy(incoming.get("fields") or [])
+            merged_fields = existing_fields
+            used_names = {str(field.get("name") or "").lower() for field in merged_fields}
+            existing_by_field_name = {
+                str(field.get("name") or "").lower(): field
+                for field in existing_fields
+            }
+            next_order = max([int(field.get("order") or 0) for field in merged_fields] + [-1]) + 1
+
+            for incoming_field in incoming_fields:
+                original_name = str(incoming_field.get("name") or "").strip()
+                same_name_existing = existing_by_field_name.get(original_name.lower())
+                if same_name_existing is not None and _field_merge_equal(same_name_existing, incoming_field):
+                    continue
+
+                merged_name = _next_merged_field_name(original_name, used_names)
+                incoming_field["name"] = merged_name
+                incoming_field["variable_name"] = merged_name
+                incoming_field["order"] = next_order
+                next_order += 1
+                used_names.add(merged_name.lower())
+                merged_fields.append(incoming_field)
+
+            incoming["fields"] = merged_fields
+
+    return prepared
 
 
 def _parse_infocode_overrides(raw: str | None) -> dict[str, str]:
@@ -444,6 +538,8 @@ async def preview_partial_update(
     project_id: int,
     file: UploadFile = File(...),
     infocode_overrides: str = Form("{}"),
+    field_mode: str = Form("MERGE"),
+    relation_mode: str = Form("MERGE"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -453,9 +549,22 @@ async def preview_partial_update(
     _data, messages, _targets = await _read_partial_json(file)
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(messages, overrides)
+    parsed_field_mode = _parse_partial_mode(field_mode, "필드")
+    parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
+    existing_messages = _load_existing_messages(db, project_id)
+    messages = _prepare_partial_messages(
+        existing_messages,
+        messages,
+        parsed_field_mode,
+        parsed_relation_mode,
+    )
     entries = _preview_entries(db, project_id, messages)
     return {
         "filename": file.filename,
+        "modes": {
+            "field": parsed_field_mode,
+            "relation": parsed_relation_mode,
+        },
         "summary": {
             "new": sum(1 for item in entries if item["status"] == "NEW"),
             "changed": sum(1 for item in entries if item["status"] == "CHANGED"),
@@ -472,6 +581,8 @@ async def apply_partial_update(
     file: UploadFile = File(...),
     selected_names: str = Form(...),
     infocode_overrides: str = Form("{}"),
+    field_mode: str = Form("MERGE"),
+    relation_mode: str = Form("MERGE"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -491,13 +602,22 @@ async def apply_partial_update(
     _data, incoming_messages, integration_targets = await _read_partial_json(file)
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(incoming_messages, overrides)
+    parsed_field_mode = _parse_partial_mode(field_mode, "필드")
+    parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
+
+    existing_messages = _load_existing_messages(db, project_id)
+    incoming_messages = _prepare_partial_messages(
+        existing_messages,
+        incoming_messages,
+        parsed_field_mode,
+        parsed_relation_mode,
+    )
     incoming_by_name = {message["struct_name"].lower(): message for message in incoming_messages}
     missing = sorted(selected_keys - incoming_by_name.keys())
     if missing:
         raise HTTPException(status_code=422, detail=f"가져온 JSON에 없는 메시지가 선택되었습니다: {', '.join(missing)}")
     selected_messages = [incoming_by_name[key] for key in incoming_by_name if key in selected_keys]
 
-    existing_messages = _load_existing_messages(db, project_id)
     existing_by_name = {(message.struct_name or message.name).lower(): message for message in existing_messages}
     _validate_selected_dependencies(selected_messages, incoming_messages, existing_by_name)
     _validate_final_infocodes(existing_messages, selected_messages)
@@ -553,7 +673,8 @@ async def apply_partial_update(
 
     target_descriptions = {str(item.get("name") or "").lower(): str(item.get("description") or "") for item in integration_targets}
 
-    # Second pass: selected message content is authoritative. Tags/groups remain untouched.
+    # Second pass: prepared content is authoritative. In MERGE mode it already contains
+    # the preserved existing fields/relations plus incoming additions. Tags/groups remain untouched.
     for incoming in actionable_selected:
         key = incoming["struct_name"].lower()
         message = message_by_name[key]
@@ -655,6 +776,8 @@ async def apply_partial_update(
             "partial_update": {
                 "filename": file.filename,
                 "message_count": len(actionable_selected),
+                "field_mode": parsed_field_mode,
+                "relation_mode": parsed_relation_mode,
                 "messages": before_snapshots,
             }
         },
@@ -662,6 +785,8 @@ async def apply_partial_update(
             "partial_update": {
                 "filename": file.filename,
                 "message_count": len(actionable_selected),
+                "field_mode": parsed_field_mode,
+                "relation_mode": parsed_relation_mode,
                 "messages": history_messages,
                 "after_messages": after_snapshots,
             }
@@ -676,4 +801,6 @@ async def apply_partial_update(
         "new_count": sum(1 for item in actionable_selected if preview_by_name[item["struct_name"].lower()]["status"] == "NEW"),
         "changed_count": sum(1 for item in actionable_selected if preview_by_name[item["struct_name"].lower()]["status"] == "CHANGED"),
         "message_names": [item["struct_name"] for item in actionable_selected],
+        "field_mode": parsed_field_mode,
+        "relation_mode": parsed_relation_mode,
     }
