@@ -1411,6 +1411,53 @@ function DesignViewModeToggle({ mode, onChange }) {
 function MessageCenteredVisualization({ messages = [], selectedMessage, onSelectMessage, onOpenMessage, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, onChangeViewerMode, onOpenReferences, onEditNode, onOpenPartialUpdate }) {
   const txTargets = selectedMessage?.tx_targets || [];
   const rxTargets = selectedMessage?.rx_targets || [];
+  const [messagePaneWidth, setMessagePaneWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('interfy-message-view-pane-width'));
+    return Number.isFinite(saved) && saved >= 220 && saved <= 460 ? saved : 260;
+  });
+  const [resizingMessagePane, setResizingMessagePane] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-message-view-pane-width', String(messagePaneWidth));
+  }, [messagePaneWidth]);
+
+  function beginMessagePaneResize(event) {
+    event.preventDefault();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+
+    const rect = shell.getBoundingClientRect();
+    setResizingMessagePane(true);
+    document.body.classList.add('message-pane-resizing');
+
+    const onPointerMove = moveEvent => {
+      const maxWidth = Math.min(460, Math.max(220, rect.width - 360));
+      const nextWidth = moveEvent.clientX - rect.left;
+      setMessagePaneWidth(Math.min(maxWidth, Math.max(220, nextWidth)));
+    };
+    const onPointerUp = () => {
+      setResizingMessagePane(false);
+      document.body.classList.remove('message-pane-resizing');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
+  function handleMessagePaneResizeKeyDown(event) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.max(220, value - 10));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.min(460, value + 10));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setMessagePaneWidth(260);
+    }
+  }
 
   function compactText(value, maxLength = 18) {
     const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -1446,7 +1493,10 @@ function MessageCenteredVisualization({ messages = [], selectedMessage, onSelect
     : '';
 
   return (
-    <section className="design-upper">
+    <section
+      className="design-upper message-centered-upper"
+      style={{ gridTemplateColumns: `${messagePaneWidth}px 7px minmax(0, 1fr)` }}
+    >
       <aside className="design-device-pane design-message-pane">
         <div className="design-pane-title"><strong>메시지</strong><span>{messages.length}</span></div>
         {messages.map(message => {
@@ -1467,6 +1517,22 @@ function MessageCenteredVisualization({ messages = [], selectedMessage, onSelect
         })}
         {!messages.length && <div className="design-message-pane-empty">현재 조건의 메시지가 없습니다.</div>}
       </aside>
+
+      <div
+        className={`design-message-pane-resizer ${resizingMessagePane ? 'active' : ''}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={460}
+        aria-valuenow={Math.round(messagePaneWidth)}
+        tabIndex={0}
+        title="드래그하여 메시지 목록 너비 조절 · 더블클릭하면 기본 너비"
+        onPointerDown={beginMessagePaneResize}
+        onDoubleClick={() => setMessagePaneWidth(260)}
+        onKeyDown={handleMessagePaneResizeKeyDown}
+      >
+        <span />
+      </div>
 
       <div className="design-canvas-pane">
         <div className="design-toolbar">
