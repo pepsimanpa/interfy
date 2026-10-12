@@ -1368,6 +1368,11 @@ body.design-resizing * { cursor: row-resize !important; }
 .partial-update-toolbar { padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .partial-update-toolbar .inline-check { margin: 0; display: inline-flex; flex-direction: row; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; }
 .partial-update-toolbar .inline-check input { width: auto; margin: 0; }
+
+.partial-update-mode-controls { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.partial-update-mode-controls label { margin: 0; display: inline-flex; flex-direction: row; align-items: center; gap: 5px; color: #64748b; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.partial-update-mode-controls select { width: auto; min-width: 132px; padding: 5px 24px 5px 7px; border-radius: 6px; font-size: 11px; }
+.partial-update-mode-hint { color: #92400e; font-size: 10.5px; white-space: nowrap; }
 .partial-update-workspace { min-height: 0; display: grid; grid-template-columns: minmax(300px, .82fr) minmax(460px, 1.8fr); gap: 12px; }
 .partial-update-list-card, .partial-update-compare-card { min-height: 0; overflow: hidden; padding: 0; }
 .partial-update-list-card { display: grid; grid-template-rows: auto minmax(0, 1fr); }
@@ -1438,6 +1443,9 @@ body.design-resizing * { cursor: row-resize !important; }
 :root[data-theme="dark"] .partial-same-message,
 :root[data-theme="dark"] .partial-update-applybar span,
 :root[data-theme="dark"] .partial-update-empty { color: #9d9d9d; }
+
+:root[data-theme="dark"] .partial-update-mode-controls label { color: #9d9d9d; }
+:root[data-theme="dark"] .partial-update-mode-hint { color: #d7ba7d; }
 :root[data-theme="dark"] .partial-update-list-head,
 :root[data-theme="dark"] .partial-update-compare-head { border-color: #3e3e42; }
 :root[data-theme="dark"] .partial-update-row:hover { background: #2a2d2e; }
@@ -1458,6 +1466,8 @@ body.design-resizing * { cursor: row-resize !important; }
 :root[data-theme="dark"] .partial-diff.change { background: #332d1e; color: #d7ba7d; }
 
 @media (max-width: 1050px) {
+  .partial-update-toolbar { flex-wrap: wrap; }
+  .partial-update-mode-controls { order: 3; width: 100%; flex-wrap: wrap; }
   .partial-update-workspace { grid-template-columns: 1fr; grid-template-rows: minmax(220px, .8fr) minmax(300px, 1.2fr); }
   .partial-update-summary { grid-template-columns: 1fr repeat(5, auto); }
 }
