@@ -783,6 +783,8 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
 function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels = [], integrationTargets = [], query = '', messageForm, setMessageForm, onCreateMessage, selectedMessage, setSelectedMessage, onCloseSelectedMessage, onSelectMessage, onDeleteMessage, onCopyMessage, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onOpenPartialUpdate, onReload, onDirtyChange }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [selectedRelationKey, setSelectedRelationKey] = useState(null);
+  const [viewerMode, setViewerMode] = useState(() => localStorage.getItem('interfy-viewer-mode') === 'message' ? 'message' : 'node');
+  const [selectedViewerMessageId, setSelectedViewerMessageId] = useState(null);
   const [protocolFilter, setProtocolFilter] = useState('ALL');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [unlinkedOnly, setUnlinkedOnly] = useState(false);
@@ -809,6 +811,10 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   useEffect(() => {
     localStorage.setItem('interfy-design-split-percent', String(splitPercent));
   }, [splitPercent]);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-viewer-mode', viewerMode);
+  }, [viewerMode]);
 
   function beginSplitResize(event) {
     event.preventDefault();
@@ -883,6 +889,31 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesTextQuery(message, query)) return false;
     return true;
   }), [messages, protocolFilter, tagFilter, query]);
+
+  const messageViewerMessages = filteredForGraph;
+  const selectedViewerMessage = messageViewerMessages.find(message => Number(message.id) === Number(selectedViewerMessageId))
+    || messageViewerMessages[0]
+    || null;
+
+  function changeViewerMode(nextMode) {
+    if (nextMode !== 'node' && nextMode !== 'message') return;
+    setViewerMode(nextMode);
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    setUnlinkedOnly(false);
+    if (nextMode === 'message' && !selectedViewerMessageId && messageViewerMessages[0]) {
+      setSelectedViewerMessageId(messageViewerMessages[0].id);
+    }
+  }
+
+  function selectViewerMessage(messageId) {
+    if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
+    if (!selectedMessage) setSelectedMessage(null);
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    setUnlinkedOnly(false);
+    setSelectedViewerMessageId(Number(messageId));
+  }
 
   const relationMap = useMemo(() => {
     const map = new Map();
@@ -978,7 +1009,9 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const unlinkedMessages = useMemo(() => messages.filter(message => !isEnumDefinition(message) && (!(message.tx_targets || []).length || !(message.rx_targets || []).length)), [messages]);
 
   const displayedMessages = useMemo(() => messages.filter(message => {
-    if (unlinkedOnly) {
+    if (viewerMode === 'message') {
+      if (!selectedViewerMessage || Number(message.id) !== Number(selectedViewerMessage.id)) return false;
+    } else if (unlinkedOnly) {
       if (isEnumDefinition(message)) return false;
       if ((message.tx_targets || []).length && (message.rx_targets || []).length) return false;
     } else if (selectedRelation) {
@@ -993,11 +1026,20 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesLabelFilter(message, tagFilter)) return false;
     if (!messageMatchesTextQuery(message, query)) return false;
     return true;
-  }), [messages, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query]);
+  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query]);
 
-  const canReorder = !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim();
+  const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim();
 
   const currentContext = useMemo(() => {
+    if (viewerMode === 'message') {
+      if (!selectedViewerMessage) return { title: '메시지 중심', detail: '현재 필터 조건에 해당하는 메시지가 없습니다.' };
+      const txCount = (selectedViewerMessage.tx_targets || []).length;
+      const rxCount = (selectedViewerMessage.rx_targets || []).length;
+      return {
+        title: generatedNameOf(selectedViewerMessage),
+        detail: `선택 메시지의 송신 노드 ${txCount}개 · 수신 노드 ${rxCount}개`,
+      };
+    }
     if (unlinkedOnly) return { title: '미연결 메시지', detail: '송신 또는 수신 노드가 지정되지 않은 메시지' };
     if (selectedRelation) {
       const from = deviceMap.get(Number(selectedRelation.fromId));
@@ -1009,7 +1051,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       return { title: device?.name || '노드', detail: '선택한 노드의 송신 + 수신 메시지' };
     }
     return { title: '전체 메시지', detail: '노드나 관계를 선택하면 이 목록이 자동으로 필터링됩니다.' };
-  }, [unlinkedOnly, selectedRelation, selectedDeviceId, deviceMap]);
+  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, deviceMap]);
 
   function selectDevice(targetId) {
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
@@ -1207,38 +1249,61 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     return relationGeometry(relation).source;
   }
 
+  const visualizationTop = viewerMode === 'message' ? (
+    <MessageCenteredVisualization
+      messages={messageViewerMessages}
+      selectedMessage={selectedViewerMessage}
+      onSelectMessage={selectViewerMessage}
+      onOpenMessage={onSelectMessage}
+      protocolFilter={protocolFilter}
+      setProtocolFilter={setProtocolFilter}
+      tagFilter={tagFilter}
+      setTagFilter={setTagFilter}
+      labels={labels}
+      protocolOptions={protocolOptions}
+      onChangeViewerMode={changeViewerMode}
+      onOpenReferences={() => openReferencePanel('node')}
+      onEditNode={(target) => openReferencePanel('node', target.id)}
+      onOpenPartialUpdate={onOpenPartialUpdate}
+    />
+  ) : (
+    <DesignVisualizationTop
+      integrationTargets={integrationTargets}
+      visibleTargets={graphTargets}
+      relationMap={graphRelations}
+      positions={positions}
+      selectedDeviceId={selectedDeviceId}
+      selectedRelationKey={selectedRelationKey}
+      protocolFilter={protocolFilter}
+      setProtocolFilter={setProtocolFilter}
+      tagFilter={tagFilter}
+      setTagFilter={setTagFilter}
+      labels={labels}
+      protocolOptions={protocolOptions}
+      unlinkedCount={unlinkedMessages.length}
+      unlinkedOnly={unlinkedOnly}
+      onSelectDevice={selectDevice}
+      onSelectRelation={selectRelation}
+      onShowAll={showAll}
+      onShowUnlinked={showUnlinked}
+      onOpenReferences={() => openReferencePanel('node')}
+      onEditNode={(target) => openReferencePanel('node', target.id)}
+      onOpenPartialUpdate={onOpenPartialUpdate}
+      relationPath={relationPath}
+      relationLabelPosition={relationLabelPosition}
+      relationSourcePosition={relationSourcePosition}
+      showProtocol={showProtocolOnGraph}
+      setShowProtocol={setShowProtocolOnGraph}
+      showMessageCount={showMessageCountOnGraph}
+      setShowMessageCount={setShowMessageCountOnGraph}
+      onChangeViewerMode={changeViewerMode}
+    />
+  );
+
   if (selectedMessage) {
     return (
       <div className="interface-design-shell" style={splitGridStyle}>
-        <DesignVisualizationTop
-          integrationTargets={integrationTargets}
-          visibleTargets={graphTargets}
-          relationMap={graphRelations}
-          positions={positions}
-          selectedDeviceId={selectedDeviceId}
-          selectedRelationKey={selectedRelationKey}
-          protocolFilter={protocolFilter}
-          setProtocolFilter={setProtocolFilter}
-          tagFilter={tagFilter}
-          setTagFilter={setTagFilter}
-          labels={labels}
-          protocolOptions={protocolOptions}
-          unlinkedCount={unlinkedMessages.length}
-          unlinkedOnly={unlinkedOnly}
-          onSelectDevice={selectDevice}
-          onSelectRelation={selectRelation}
-          onShowAll={showAll}
-          onShowUnlinked={showUnlinked}
-          onOpenReferences={() => openReferencePanel('node')}
-          onEditNode={(target) => openReferencePanel('node', target.id)}
-          relationPath={relationPath}
-          relationLabelPosition={relationLabelPosition}
-          relationSourcePosition={relationSourcePosition}
-          showProtocol={showProtocolOnGraph}
-          setShowProtocol={setShowProtocolOnGraph}
-          showMessageCount={showMessageCountOnGraph}
-          setShowMessageCount={setShowMessageCountOnGraph}
-        />
+        {visualizationTop}
         {splitHandle}
         <section className="design-lower design-editor-lower">
           <div className="design-lower-head">
@@ -1262,36 +1327,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
 
   return (
     <div className="interface-design-shell" style={splitGridStyle}>
-      <DesignVisualizationTop
-        integrationTargets={integrationTargets}
-        visibleTargets={graphTargets}
-        relationMap={graphRelations}
-        positions={positions}
-        selectedDeviceId={selectedDeviceId}
-        selectedRelationKey={selectedRelationKey}
-        protocolFilter={protocolFilter}
-        setProtocolFilter={setProtocolFilter}
-        tagFilter={tagFilter}
-        setTagFilter={setTagFilter}
-        labels={labels}
-        protocolOptions={protocolOptions}
-        unlinkedCount={unlinkedMessages.length}
-        unlinkedOnly={unlinkedOnly}
-        onSelectDevice={selectDevice}
-        onSelectRelation={selectRelation}
-        onShowAll={showAll}
-        onShowUnlinked={showUnlinked}
-        onOpenReferences={() => openReferencePanel('node')}
-        onEditNode={(target) => openReferencePanel('node', target.id)}
-        onOpenPartialUpdate={onOpenPartialUpdate}
-        relationPath={relationPath}
-        relationLabelPosition={relationLabelPosition}
-        relationSourcePosition={relationSourcePosition}
-        showProtocol={showProtocolOnGraph}
-        setShowProtocol={setShowProtocolOnGraph}
-        showMessageCount={showMessageCountOnGraph}
-        setShowMessageCount={setShowMessageCountOnGraph}
-      />
+      {visualizationTop}
 
       {splitHandle}
 
@@ -1302,7 +1338,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
             <p>{currentContext.detail}</p>
           </div>
           <div className="button-row compact">
-            <button type="button" className="ghost" onClick={showAll}>전체 보기</button>
+            {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
             <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
           </div>
         </div>
@@ -1363,7 +1399,213 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   );
 }
 
-function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount }) {
+function DesignViewModeToggle({ mode, onChange }) {
+  return (
+    <div className="design-view-mode-toggle" role="group" aria-label="뷰어 기준 전환">
+      <button type="button" className={mode === 'node' ? 'active' : ''} onClick={() => onChange?.('node')}><Layers size={13}/> 노드 중심</button>
+      <button type="button" className={mode === 'message' ? 'active' : ''} onClick={() => onChange?.('message')}><MessageSquare size={13}/> 메시지 중심</button>
+    </div>
+  );
+}
+
+function MessageCenteredVisualization({ messages = [], selectedMessage, onSelectMessage, onOpenMessage, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, onChangeViewerMode, onOpenReferences, onEditNode, onOpenPartialUpdate }) {
+  const txTargets = selectedMessage?.tx_targets || [];
+  const rxTargets = selectedMessage?.rx_targets || [];
+  const [messagePaneWidth, setMessagePaneWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('interfy-message-view-pane-width'));
+    return Number.isFinite(saved) && saved >= 220 && saved <= 460 ? saved : 260;
+  });
+  const [resizingMessagePane, setResizingMessagePane] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-message-view-pane-width', String(messagePaneWidth));
+  }, [messagePaneWidth]);
+
+  function beginMessagePaneResize(event) {
+    event.preventDefault();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+
+    const rect = shell.getBoundingClientRect();
+    setResizingMessagePane(true);
+    document.body.classList.add('message-pane-resizing');
+
+    const onPointerMove = moveEvent => {
+      const maxWidth = Math.min(460, Math.max(220, rect.width - 360));
+      const nextWidth = moveEvent.clientX - rect.left;
+      setMessagePaneWidth(Math.min(maxWidth, Math.max(220, nextWidth)));
+    };
+    const onPointerUp = () => {
+      setResizingMessagePane(false);
+      document.body.classList.remove('message-pane-resizing');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
+  function handleMessagePaneResizeKeyDown(event) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.max(220, value - 10));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.min(460, value + 10));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setMessagePaneWidth(260);
+    }
+  }
+
+  function compactText(value, maxLength = 18) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function sidePositions(targets, side) {
+    const count = targets.length;
+    if (!count) return new Map();
+    const columns = Math.min(3, Math.max(1, Math.ceil(count / 6)));
+    const perColumn = Math.ceil(count / columns);
+    const xSets = side === 'tx' ? [190, 105, 38] : [710, 795, 862];
+    const map = new Map();
+
+    targets.forEach((target, index) => {
+      const column = Math.floor(index / perColumn);
+      const row = index % perColumn;
+      const countInColumn = Math.min(perColumn, count - column * perColumn);
+      const y = 46 + ((310 / (countInColumn + 1)) * (row + 1));
+      map.set(`${target.id}-${index}`, { x: xSets[column] ?? xSets[xSets.length - 1], y });
+    });
+    return map;
+  }
+
+  const txPositions = sidePositions(txTargets, 'tx');
+  const rxPositions = sidePositions(rxTargets, 'rx');
+  const protocols = selectedMessage ? messageProtocols(selectedMessage) : [];
+  const messageMeta = selectedMessage
+    ? [
+        protocols.length ? protocols.join(', ') : '',
+        selectedMessage.infocode ? `정보코드 ${selectedMessage.infocode}` : '',
+      ].filter(Boolean).join(' · ')
+    : '';
+
+  return (
+    <section
+      className="design-upper message-centered-upper"
+      style={{ gridTemplateColumns: `${messagePaneWidth}px 7px minmax(0, 1fr)` }}
+    >
+      <aside className="design-device-pane design-message-pane">
+        <div className="design-pane-title"><strong>메시지</strong><span>{messages.length}</span></div>
+        {messages.map(message => {
+          const active = Number(selectedMessage?.id) === Number(message.id);
+          return (
+            <button
+              type="button"
+              key={message.id}
+              title={message.name ? `${generatedNameOf(message)}\n${message.name}` : generatedNameOf(message)}
+              className={active ? 'design-device design-message-nav active' : 'design-device design-message-nav'}
+              onClick={() => onSelectMessage?.(message.id)}
+            >
+              <MessageSquare size={13}/>
+              <span className="design-message-nav-main"><strong>{generatedNameOf(message)}</strong><small>{message.name || '-'}</small></span>
+              {message.infocode && <em>{message.infocode}</em>}
+            </button>
+          );
+        })}
+        {!messages.length && <div className="design-message-pane-empty">현재 조건의 메시지가 없습니다.</div>}
+      </aside>
+
+      <div
+        className={`design-message-pane-resizer ${resizingMessagePane ? 'active' : ''}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={460}
+        aria-valuenow={Math.round(messagePaneWidth)}
+        tabIndex={0}
+        title="드래그하여 메시지 목록 너비 조절 · 더블클릭하면 기본 너비"
+        onPointerDown={beginMessagePaneResize}
+        onDoubleClick={() => setMessagePaneWidth(260)}
+        onKeyDown={handleMessagePaneResizeKeyDown}
+      >
+        <span />
+      </div>
+
+      <div className="design-canvas-pane">
+        <div className="design-toolbar">
+          <DesignViewModeToggle mode="message" onChange={onChangeViewerMode} />
+          <div className="design-filter-field"><span>프로토콜</span><select value={protocolFilter} onChange={e => setProtocolFilter(e.target.value)}><option value="ALL">전체</option>{protocolOptions.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}</select></div>
+          <div className="design-filter-field"><span>태그</span><select value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="ALL">전체</option><option value="NONE">태그 없음</option>{labels.map(label => <option key={label.id} value={String(label.id)}>{label.name}</option>)}</select></div>
+          <div className="design-focus-badge message">메시지 포커스</div>
+          <div className="design-toolbar-summary"><strong>{messages.length}</strong> 메시지{selectedMessage ? ` · 송신 ${txTargets.length} · 수신 ${rxTargets.length}` : ''}</div>
+          {onOpenPartialUpdate && <button type="button" className="ghost design-partial-update-button" onClick={onOpenPartialUpdate}><Upload size={14}/> 부분 업데이트</button>}
+        </div>
+
+        <button type="button" className="design-floating-add" title="노드 또는 태그 추가" aria-label="노드 또는 태그 추가" onClick={onOpenReferences}><Plus size={19}/></button>
+
+        <div className="design-svg-wrap">
+          {selectedMessage ? (
+            <svg className="design-network message-centered-network" viewBox="0 0 900 390" role="img" aria-label={`${generatedNameOf(selectedMessage)} 송수신 노드 관계`}>
+              <defs>
+                <marker id="messageViewArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 8 4 L 0 8 z" className="design-arrow-head"/></marker>
+              </defs>
+
+              <text className="message-view-role-title" x="150" y="25" textAnchor="middle">송신 노드</text>
+              <text className="message-view-role-title" x="750" y="25" textAnchor="middle">수신 노드</text>
+
+              {txTargets.map((target, index) => {
+                const pos = txPositions.get(`${target.id}-${index}`);
+                if (!pos) return null;
+                const path = `M ${pos.x + 49} ${pos.y} C ${pos.x + 105} ${pos.y}, 315 195, 350 195`;
+                return (
+                  <g key={`tx-${target.id}-${index}`}>
+                    <g className="design-edge message-view-edge"><path className="design-edge-line" d={path} markerEnd="url(#messageViewArrow)" /></g>
+                    <g className="design-node message-view-node" transform={`translate(${pos.x},${pos.y})`} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEditNode?.(target); }}>
+                      <rect x="-49" y="-17" width="98" height="34" rx="7"/>
+                      <text className="design-node-name" textAnchor="middle" y="1">{compactText(target.name, 12)}</text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {rxTargets.map((target, index) => {
+                const pos = rxPositions.get(`${target.id}-${index}`);
+                if (!pos) return null;
+                const path = `M 550 195 C 585 195, ${pos.x - 105} ${pos.y}, ${pos.x - 49} ${pos.y}`;
+                return (
+                  <g key={`rx-${target.id}-${index}`}>
+                    <g className="design-edge message-view-edge"><path className="design-edge-line" d={path} markerEnd="url(#messageViewArrow)" /></g>
+                    <g className="design-node message-view-node" transform={`translate(${pos.x},${pos.y})`} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEditNode?.(target); }}>
+                      <rect x="-49" y="-17" width="98" height="34" rx="7"/>
+                      <text className="design-node-name" textAnchor="middle" y="1">{compactText(target.name, 12)}</text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {!txTargets.length && <text className="message-view-empty-side" x="155" y="198" textAnchor="middle">송신 노드 없음</text>}
+              {!rxTargets.length && <text className="message-view-empty-side" x="745" y="198" textAnchor="middle">수신 노드 없음</text>}
+
+              <g className="design-node message-view-hub" transform="translate(450,195)" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onOpenMessage?.(selectedMessage); }}>
+                <rect x="-100" y="-42" width="200" height="84" rx="12"/>
+                <text className="message-view-hub-name" textAnchor="middle" y="-13">{compactText(generatedNameOf(selectedMessage), 28)}</text>
+                <text className="message-view-hub-purpose" textAnchor="middle" y="8">{compactText(selectedMessage.name || '-', 30)}</text>
+                <text className="message-view-hub-meta" textAnchor="middle" y="28">{compactText(messageMeta || '프로토콜/정보코드 없음', 34)}</text>
+              </g>
+            </svg>
+          ) : (
+            <div className="design-empty-graph"><MessageSquare size={32}/><strong>표시할 메시지가 없습니다.</strong><span>검색·프로토콜·태그 필터를 확인하세요.</span></div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
   // Draw the selected relation last so its line/label is never hidden by another relation.
   const renderRelations = [...relationMap].sort((a, b) => Number(a.key === selectedRelationKey) - Number(b.key === selectedRelationKey));
   const focusView = Boolean(selectedDeviceId);
@@ -1404,6 +1646,7 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
 
       <div className="design-canvas-pane">
         <div className="design-toolbar">
+          <DesignViewModeToggle mode="node" onChange={onChangeViewerMode} />
           <div className="design-filter-field"><span>프로토콜</span><select value={protocolFilter} onChange={e => setProtocolFilter(e.target.value)}><option value="ALL">전체</option>{protocolOptions.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}</select></div>
           <div className="design-filter-field"><span>태그</span><select value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="ALL">전체</option><option value="NONE">태그 없음</option>{labels.map(label => <option key={label.id} value={String(label.id)}>{label.name}</option>)}</select></div>
           <div className="design-display-options" aria-label="관계 표시 옵션">
