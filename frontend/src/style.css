@@ -882,6 +882,34 @@ body.design-resizing * { cursor: row-resize !important; }
 .design-message-nav.active .design-message-nav-main small { color: #60a5fa; }
 .design-message-pane-empty { padding: 18px 7px; color: #94a3b8; font-size: 11px; line-height: 1.45; text-align: center; }
 
+.message-centered-upper .design-message-pane { border-right: 0; }
+.design-message-pane-resizer {
+  min-width: 7px;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  cursor: col-resize;
+  background: #eef2f7;
+  border-left: 1px solid #dbe3ee;
+  border-right: 1px solid #dbe3ee;
+  outline: none;
+  user-select: none;
+}
+.design-message-pane-resizer span {
+  width: 2px;
+  background: transparent;
+  transition: background .12s ease;
+}
+.design-message-pane-resizer:hover span,
+.design-message-pane-resizer:focus-visible span,
+.design-message-pane-resizer.active span { background: #60a5fa; }
+body.message-pane-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+body.message-pane-resizing * { cursor: col-resize !important; }
+
 .design-canvas-pane { position: relative; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0,1fr); background: #fbfcfe; }
 .design-toolbar {
   min-height: 48px;
@@ -1118,6 +1146,14 @@ body.design-resizing * { cursor: row-resize !important; }
 :root[data-theme="dark"] .design-message-nav-main small { color: #777777; }
 :root[data-theme="dark"] .design-message-nav.active .design-message-nav-main small { color: #9cdcfe; }
 :root[data-theme="dark"] .design-message-pane-empty { color: #777777; }
+
+:root[data-theme="dark"] .design-message-pane-resizer {
+  background: #252526;
+  border-color: #3e3e42;
+}
+:root[data-theme="dark"] .design-message-pane-resizer:hover span,
+:root[data-theme="dark"] .design-message-pane-resizer:focus-visible span,
+:root[data-theme="dark"] .design-message-pane-resizer.active span { background: #3794ff; }
 :root[data-theme="dark"] .message-view-role-title { fill: #9d9d9d; }
 :root[data-theme="dark"] .message-view-edge > path,
 :root[data-theme="dark"] .message-view-edge:hover > path { stroke: #6b6b70; }
