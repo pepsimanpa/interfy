@@ -2130,6 +2130,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [infocodeOverrides, setInfocodeOverrides] = useState({});
   const [conflictEditor, setConflictEditor] = useState(null);
   const [fieldMode, setFieldMode] = useState('MERGE');
+  const [protocolMode, setProtocolMode] = useState('MERGE');
   const [relationMode, setRelationMode] = useState('MERGE');
 
   const rows = preview?.messages || [];
@@ -2149,7 +2150,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     return Object.prototype.hasOwnProperty.call(infocodeOverrides, structName);
   }
 
-  async function previewFile(nextFile, overrides = {}, preserveSelection = false, nextFieldMode = fieldMode, nextRelationMode = relationMode) {
+  async function previewFile(nextFile, overrides = {}, preserveSelection = false, nextFieldMode = fieldMode, nextProtocolMode = protocolMode, nextRelationMode = relationMode) {
     if (!nextFile) return;
     setBusy(true);
     setNotice('');
@@ -2158,6 +2159,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
       formData.append('file', nextFile);
       formData.append('infocode_overrides', JSON.stringify(overrides));
       formData.append('field_mode', nextFieldMode);
+      formData.append('protocol_mode', nextProtocolMode);
       formData.append('relation_mode', nextRelationMode);
       const result = await api.postForm(`/projects/${projectId}/partial-update/preview`, formData);
       setFile(nextFile);
@@ -2239,12 +2241,17 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
 
   async function changeFieldMode(nextMode) {
     setFieldMode(nextMode);
-    if (file) await previewFile(file, infocodeOverrides, true, nextMode, relationMode);
+    if (file) await previewFile(file, infocodeOverrides, true, nextMode, protocolMode, relationMode);
+  }
+
+  async function changeProtocolMode(nextMode) {
+    setProtocolMode(nextMode);
+    if (file) await previewFile(file, infocodeOverrides, true, fieldMode, nextMode, relationMode);
   }
 
   async function changeRelationMode(nextMode) {
     setRelationMode(nextMode);
-    if (file) await previewFile(file, infocodeOverrides, true, fieldMode, nextMode);
+    if (file) await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, nextMode);
   }
 
   async function applySelected() {
@@ -2255,7 +2262,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     }
 
     const deleteText = selectedDeleteCount > 0 ? `\n삭제되는 항목 ${selectedDeleteCount}건이 포함되어 있습니다.` : '';
-    const modeText = `\n필드: ${fieldMode === 'MERGE' ? '기존 유지 + 추가(동명이면 _1, _2...)' : 'JSON 기준 교체'}\n송수신: ${relationMode === 'MERGE' ? '기존 유지 + 추가' : 'JSON 기준 교체'}`;
+    const modeText = `\n필드: ${fieldMode === 'MERGE' ? '기존 유지 + 추가(동명이면 _1, _2...)' : 'JSON 기준 교체'}\n프로토콜: ${protocolMode === 'MERGE' ? '기존 유지 + 추가' : 'JSON 기준 교체'}\n송수신: ${relationMode === 'MERGE' ? '기존 유지 + 추가' : 'JSON 기준 교체'}`;
     if (!confirm(`선택한 ${checkedRows.length}개 메시지를 현재 프로젝트에 반영할까요?${deleteText}${modeText}\n\n체크하지 않은 메시지는 변경되지 않습니다.`)) return;
 
     setBusy(true);
@@ -2266,10 +2273,11 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
       formData.append('selected_names', JSON.stringify(checkedRows.map(row => row.struct_name)));
       formData.append('infocode_overrides', JSON.stringify(infocodeOverrides));
       formData.append('field_mode', fieldMode);
+      formData.append('protocol_mode', protocolMode);
       formData.append('relation_mode', relationMode);
       const result = await api.postForm(`/projects/${projectId}/partial-update/apply`, formData);
       await onApplied?.();
-      await previewFile(file, infocodeOverrides, true, fieldMode, relationMode);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
       setNotice(`${result.updated_count}개 메시지를 반영했습니다. 이력 관리에 부분 업데이트 기록이 저장되었습니다.`);
     } finally {
       setBusy(false);
@@ -2316,6 +2324,13 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
               <label>
                 <span>필드 반영</span>
                 <select value={fieldMode} disabled={busy} onChange={e => changeFieldMode(e.target.value)}>
+                  <option value="MERGE">기존 유지 + 추가</option>
+                  <option value="REPLACE">JSON 기준 교체</option>
+                </select>
+              </label>
+              <label>
+                <span>프로토콜 반영</span>
+                <select value={protocolMode} disabled={busy} onChange={e => changeProtocolMode(e.target.value)}>
                   <option value="MERGE">기존 유지 + 추가</option>
                   <option value="REPLACE">JSON 기준 교체</option>
                 </select>
