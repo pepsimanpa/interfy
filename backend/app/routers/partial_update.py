@@ -114,10 +114,15 @@ def _merge_target_names(existing: list[str] | None, incoming: list[str] | None) 
     return _normalize_target_names(combined)
 
 
+def _merge_protocols(existing: Any, incoming: Any) -> str | None:
+    return normalize_protocol_string([existing, incoming])
+
+
 def _prepare_partial_messages(
     existing_messages: list[Message],
     incoming_messages: list[dict[str, Any]],
     field_mode: str,
+    protocol_mode: str,
     relation_mode: str,
 ) -> list[dict[str, Any]]:
     existing_by_name = {
@@ -130,6 +135,9 @@ def _prepare_partial_messages(
         existing = existing_by_name.get(incoming["struct_name"].lower())
         if existing is None:
             continue
+
+        if protocol_mode == "MERGE":
+            incoming["protocol"] = _merge_protocols(existing.get("protocol"), incoming.get("protocol"))
 
         if relation_mode == "MERGE":
             incoming["tx_targets"] = _merge_target_names(existing.get("tx_targets"), incoming.get("tx_targets"))
@@ -551,6 +559,7 @@ async def preview_partial_update(
     file: UploadFile = File(...),
     infocode_overrides: str = Form("{}"),
     field_mode: str = Form("MERGE"),
+    protocol_mode: str = Form("MERGE"),
     relation_mode: str = Form("MERGE"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -562,12 +571,14 @@ async def preview_partial_update(
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
+    parsed_protocol_mode = _parse_partial_mode(protocol_mode, "프로토콜")
     parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
     existing_messages = _load_existing_messages(db, project_id)
     messages = _prepare_partial_messages(
         existing_messages,
         messages,
         parsed_field_mode,
+        parsed_protocol_mode,
         parsed_relation_mode,
     )
     entries = _preview_entries(db, project_id, messages)
@@ -575,6 +586,7 @@ async def preview_partial_update(
         "filename": file.filename,
         "modes": {
             "field": parsed_field_mode,
+            "protocol": parsed_protocol_mode,
             "relation": parsed_relation_mode,
         },
         "summary": {
@@ -594,6 +606,7 @@ async def apply_partial_update(
     selected_names: str = Form(...),
     infocode_overrides: str = Form("{}"),
     field_mode: str = Form("MERGE"),
+    protocol_mode: str = Form("MERGE"),
     relation_mode: str = Form("MERGE"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -615,6 +628,7 @@ async def apply_partial_update(
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(incoming_messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
+    parsed_protocol_mode = _parse_partial_mode(protocol_mode, "프로토콜")
     parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
 
     existing_messages = _load_existing_messages(db, project_id)
@@ -622,6 +636,7 @@ async def apply_partial_update(
         existing_messages,
         incoming_messages,
         parsed_field_mode,
+        parsed_protocol_mode,
         parsed_relation_mode,
     )
     incoming_by_name = {message["struct_name"].lower(): message for message in incoming_messages}
@@ -789,6 +804,7 @@ async def apply_partial_update(
                 "filename": file.filename,
                 "message_count": len(actionable_selected),
                 "field_mode": parsed_field_mode,
+                "protocol_mode": parsed_protocol_mode,
                 "relation_mode": parsed_relation_mode,
                 "messages": before_snapshots,
             }
@@ -798,6 +814,7 @@ async def apply_partial_update(
                 "filename": file.filename,
                 "message_count": len(actionable_selected),
                 "field_mode": parsed_field_mode,
+                "protocol_mode": parsed_protocol_mode,
                 "relation_mode": parsed_relation_mode,
                 "messages": history_messages,
                 "after_messages": after_snapshots,
@@ -814,5 +831,6 @@ async def apply_partial_update(
         "changed_count": sum(1 for item in actionable_selected if preview_by_name[item["struct_name"].lower()]["status"] == "CHANGED"),
         "message_names": [item["struct_name"] for item in actionable_selected],
         "field_mode": parsed_field_mode,
+        "protocol_mode": parsed_protocol_mode,
         "relation_mode": parsed_relation_mode,
     }
