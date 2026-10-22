@@ -2456,12 +2456,14 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
             </div>
 
             {!isMessage ? (
+              <>
               <div className="merge-summary-grid">
                 <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
                 <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
                 <div><span>송신 이동</span><strong>{preview.summary?.tx_move_count || 0}</strong></div>
                 <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
                 <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
+              </div>
                 {(preview.affected_messages || []).length > 0 && (
                   <div className="merge-preview-list">
                     <strong>송수신이 변경되는 메시지</strong>
@@ -2471,7 +2473,7 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
                     {(preview.affected_messages || []).length > 12 && <em>외 {preview.affected_messages.length - 12}건</em>}
                   </div>
                 )}
-              </div>
+              </>
             ) : (
               <>
                 <div className="merge-summary-grid">
