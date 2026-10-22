@@ -2388,7 +2388,7 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
   async function applyMerge() {
     if (!preview || (preview.blockers || []).length > 0) return;
     const representativeName = representative ? itemTitle(representative) : '';
-    if (!confirm(`선택한 ${selectedIds.size}개 항목을 '${representativeName}' 기준으로 머지할까요?\n\n머지된 원본 항목은 삭제됩니다.`)) return;
+    if (!confirm(`선택한 ${selectedIds.size}개 항목을 '${representativeName}' 기준으로 머지할까요?\n\n머지된 원본 항목은 삭제됩니다.\n작업 직전 프로젝트 전체 상태가 자동 백업됩니다.`)) return;
     setBusy(true);
     setLocalError('');
     try {
@@ -2456,6 +2456,7 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
             </div>
 
             {!isMessage ? (
+              <>
               <div className="merge-summary-grid">
                 <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
                 <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
@@ -2463,6 +2464,16 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
                 <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
                 <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
               </div>
+                {(preview.affected_messages || []).length > 0 && (
+                  <div className="merge-preview-list">
+                    <strong>송수신이 변경되는 메시지</strong>
+                    {(preview.affected_messages || []).slice(0, 12).map(message => (
+                      <span key={message.id}>{message.struct_name}{message.name ? ` · ${message.name}` : ''}</span>
+                    ))}
+                    {(preview.affected_messages || []).length > 12 && <em>외 {preview.affected_messages.length - 12}건</em>}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="merge-summary-grid">
@@ -2488,6 +2499,16 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
                   </div>
                 )}
 
+                {(preview.reference_redirects || []).length > 0 && (
+                  <div className="merge-preview-list">
+                    <strong>참조 변경 대상</strong>
+                    {(preview.reference_redirects || []).slice(0, 12).map(item => (
+                      <span key={item.field_id}>{item.owner_struct_name || item.message_id}.{item.field_name} → {preview.target?.struct_name}</span>
+                    ))}
+                    {(preview.reference_redirects || []).length > 12 && <em>외 {preview.reference_redirects.length - 12}건</em>}
+                  </div>
+                )}
+
                 {(preview.discarded_metadata || []).some(item => item.infocode || item.period) && (
                   <div className="merge-warning">
                     대표 메시지의 정보코드·주기를 유지합니다. 머지되는 메시지의 정보코드/주기는 제거됩니다.
@@ -2505,6 +2526,7 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
           </div>
         )}
 
+        <p className="merge-auto-backup-note">머지 실행 직전에 복구 가능한 프로젝트 백업을 자동 생성합니다.</p>
         <div className="merge-modal-actions">
           <button type="button" className="ghost" onClick={onClose}>취소</button>
           <button type="button" className="ghost" disabled={busy || !canPreview} onClick={loadPreview}>{busy ? '확인 중...' : '미리보기'}</button>
@@ -4219,7 +4241,7 @@ function HistoryPanel({ api, projectId, history, backups, backupEvents, onReload
                 {backups.map(backup => (
                   <tr key={backup.id}>
                     <td>{formatDate(backup.created_at)}</td>
-                    <td>{backup.kind === 'AUTO_BEFORE_RESTORE' ? '복원 전 자동 백업' : '사용자 백업'}</td>
+                    <td>{backup.kind === 'AUTO_BEFORE_RESTORE' ? '복원 전 자동 백업' : backup.kind === 'AUTO_BEFORE_MERGE' ? '머지 전 자동 백업' : '사용자 백업'}</td>
                     <td className="backup-note-cell" title={backup.note || ''}>{backup.note || '-'}</td>
                     <td>{backup.created_by_name || backup.created_by || '-'}</td>
                     <td>{backup.message_count}</td>

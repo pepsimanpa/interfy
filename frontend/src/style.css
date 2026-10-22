@@ -2228,6 +2228,8 @@ body.message-pane-resizing * { cursor: col-resize !important; }
   border-top: 1px solid #e2e8f0;
 }
 .merge-modal-actions button { width: auto; }
+.merge-auto-backup-note { margin: 4px 0 0; color: #64748b; font-size: 11px; line-height: 1.35; }
+:root[data-theme="dark"] .merge-auto-backup-note { color: #9d9d9d; }
 .reference-drawer-list-head.merge-enabled > div { min-width: 0; display: grid; gap: 1px; }
 .reference-drawer-list-head.merge-enabled > button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; }
 

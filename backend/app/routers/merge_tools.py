@@ -26,6 +26,7 @@ from ..models import (
     User,
 )
 from ..protocols import normalize_protocol_string
+from .backups import _create_project_backup
 
 router = APIRouter(tags=["merge-tools"])
 
@@ -160,6 +161,14 @@ def apply_target_merge(
     preview = _target_merge_preview(db, project_id, payload.target_id, payload.source_ids)
     target, sources = _target_rows(db, project_id, payload.target_id, payload.source_ids)
 
+    # A merge removes the source nodes; save a restorable project snapshot in
+    # the SAME transaction so either the merge and backup both succeed or neither does.
+    backup = _create_project_backup(
+        db, project_id, current_user,
+        kind="AUTO_BEFORE_MERGE",
+        note=f"노드 머지 전 자동 백업: {target.name} ← {', '.join(row.name for row in sources)}",
+    )
+
     moved_tx = 0
     moved_rx = 0
     removed_duplicates = 0
@@ -229,6 +238,7 @@ def apply_target_merge(
         "moved_rx": moved_rx,
         "removed_duplicate_links": removed_duplicates,
         "affected_message_count": preview["summary"]["affected_message_count"],
+        "backup_id": backup.id,
     }
 
 
@@ -524,6 +534,12 @@ def _build_message_merge_plan(db: Session, project_id: int, target_id: int, sour
     merged_protocol = normalize_protocol_string([row.protocol for row in all_merge_messages])
     current_protocol = normalize_protocol_string(target.protocol)
 
+    reference_owner_ids = {field.message_id for field in reference_rows}
+    reference_owner_names = {
+        row.id: _message_name(row)
+        for row in db.query(Message).filter(Message.id.in_(reference_owner_ids)).all()
+    } if reference_owner_ids else {}
+
     return {
         "kind": "MESSAGE",
         "target": {
@@ -561,6 +577,7 @@ def _build_message_merge_plan(db: Session, project_id: int, target_id: int, sour
             "field_id": field.id,
             "message_id": field.message_id,
             "field_name": field.name,
+            "owner_struct_name": reference_owner_names.get(field.message_id, str(field.message_id)),
             "from_message_id": field.ref_message_id,
             "to_message_id": target.id,
         } for field in reference_rows],
@@ -630,6 +647,13 @@ def apply_message_merge(
         raise HTTPException(status_code=409, detail=" / ".join(plan["blockers"]))
 
     target, sources = _load_messages_for_merge(db, project_id, payload.target_id, payload.source_ids)
+
+    backup = _create_project_backup(
+        db, project_id, current_user,
+        kind="AUTO_BEFORE_MERGE",
+        note=f"메시지 머지 전 자동 백업: {_message_name(target)} ← {', '.join(_message_name(row) for row in sources)}",
+    )
+
     source_id_set = {row.id for row in sources}
     all_ids = [target.id, *source_id_set]
 
@@ -799,4 +823,5 @@ def apply_message_merge(
         "target_struct_name": _message_name(target),
         "removed_source_count": len(sources),
         "summary": plan["summary"],
+        "backup_id": backup.id,
     }
