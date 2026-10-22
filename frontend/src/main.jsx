@@ -2280,6 +2280,218 @@ function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder
   );
 }
 
+
+function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }) {
+  const isMessage = kind === 'message';
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [targetId, setTargetId] = useState('');
+  const [query, setQuery] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState('');
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = items.filter(item => {
+    const title = isMessage ? generatedNameOf(item) : item.name;
+    const detail = isMessage ? item.name : item.description;
+    return !normalizedQuery ||
+      String(title || '').toLowerCase().includes(normalizedQuery) ||
+      String(detail || '').toLowerCase().includes(normalizedQuery);
+  });
+  const selectedItems = items.filter(item => selectedIds.has(Number(item.id)));
+  const representative = items.find(item => Number(item.id) === Number(targetId)) || null;
+  const canPreview = selectedIds.size >= 2 && representative && selectedIds.has(Number(representative.id));
+  const endpointKind = isMessage ? 'messages' : 'targets';
+
+  function itemTitle(item) {
+    return isMessage ? generatedNameOf(item) : item.name;
+  }
+
+  function itemDetail(item) {
+    if (isMessage) {
+      const typeText = isEnumDefinition(item) ? 'Enum' : '메시지';
+      return `${typeText} · ${item.name || '용도 없음'}`;
+    }
+    return item.description || '설명 없음';
+  }
+
+  function toggleItem(itemId) {
+    const id = Number(itemId);
+    setPreview(null);
+    setLocalError('');
+    setSelectedIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+        if (Number(targetId) === id) setTargetId('');
+      } else {
+        next.add(id);
+        if (!targetId) setTargetId(String(id));
+      }
+      return next;
+    });
+  }
+
+  function chooseRepresentative(itemId) {
+    const id = Number(itemId);
+    if (!selectedIds.has(id)) return;
+    setTargetId(String(id));
+    setPreview(null);
+    setLocalError('');
+  }
+
+  function buildPayload() {
+    const representativeId = Number(targetId);
+    return {
+      target_id: representativeId,
+      source_ids: [...selectedIds].filter(id => Number(id) !== representativeId),
+    };
+  }
+
+  async function loadPreview() {
+    if (!canPreview) return;
+    setBusy(true);
+    setLocalError('');
+    try {
+      const result = await api.post(`/projects/${projectId}/merge/${endpointKind}/preview`, buildPayload());
+      setPreview(result);
+    } catch (error) {
+      setLocalError(error?.message || '머지 미리보기를 불러오지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyMerge() {
+    if (!preview || (preview.blockers || []).length > 0) return;
+    const representativeName = representative ? itemTitle(representative) : '';
+    if (!confirm(`선택한 ${selectedIds.size}개 항목을 '${representativeName}' 기준으로 머지할까요?\n\n머지된 원본 항목은 삭제됩니다.`)) return;
+    setBusy(true);
+    setLocalError('');
+    try {
+      const result = await api.post(`/projects/${projectId}/merge/${endpointKind}/apply`, buildPayload());
+      await onMerged?.(result);
+      onClose?.();
+    } catch (error) {
+      setLocalError(error?.message || '머지를 실행하지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="merge-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose?.(); }}>
+      <div className="merge-modal card" role="dialog" aria-modal="true" aria-label={isMessage ? '메시지 머지' : '노드 머지'}>
+        <div className="merge-modal-head">
+          <div>
+            <p className="eyebrow">정리 도구</p>
+            <h3>{isMessage ? '메시지 머지' : '노드 머지'}</h3>
+            <p>{isMessage ? '같은 의미의 메시지를 하나의 대표 메시지로 합칩니다.' : '중복 노드를 하나의 대표 노드로 합치고 송수신 연결을 이동합니다.'}</p>
+          </div>
+          <button type="button" className="icon ghost-icon" aria-label="닫기" onClick={onClose}>×</button>
+        </div>
+
+        <div className="merge-search">
+          <Search size={15}/>
+          <input autoFocus value={query} placeholder={isMessage ? '메시지 이름/용도 검색...' : '노드 이름/설명 검색...'} onChange={event => setQuery(event.target.value)} />
+        </div>
+
+        <div className="merge-picker-head">
+          <strong>선택 {selectedIds.size}개</strong>
+          <span>체크 후 대표 항목을 지정하세요.</span>
+        </div>
+
+        <div className="merge-picker-list">
+          {filteredItems.map(item => {
+            const id = Number(item.id);
+            const selected = selectedIds.has(id);
+            const isTarget = Number(targetId) === id;
+            return (
+              <div key={item.id} className={`merge-picker-row ${selected ? 'selected' : ''} ${isTarget ? 'representative' : ''}`}>
+                <input type="checkbox" checked={selected} onChange={() => toggleItem(id)} />
+                <button type="button" className="merge-picker-main" onClick={() => toggleItem(id)}>
+                  <strong>{itemTitle(item)}</strong>
+                  <span>{itemDetail(item)}</span>
+                </button>
+                <label className={selected ? 'merge-representative-choice enabled' : 'merge-representative-choice'}>
+                  <input type="radio" name={`${kind}-merge-target`} checked={isTarget} disabled={!selected} onChange={() => chooseRepresentative(id)} />
+                  <span>대표</span>
+                </label>
+              </div>
+            );
+          })}
+          {!filteredItems.length && <div className="merge-empty">조건에 맞는 항목이 없습니다.</div>}
+        </div>
+
+        {localError && <div className="merge-error">{localError}</div>}
+
+        {preview && (
+          <div className="merge-preview">
+            <div className="merge-preview-title">
+              <strong>머지 미리보기</strong>
+              <span>{preview.target?.struct_name || preview.target?.name} 기준</span>
+            </div>
+
+            {!isMessage ? (
+              <div className="merge-summary-grid">
+                <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
+                <div><span>송신 이동</span><strong>{preview.summary?.tx_move_count || 0}</strong></div>
+                <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
+                <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
+              </div>
+            ) : (
+              <>
+                <div className="merge-summary-grid">
+                  <div><span>삭제될 메시지</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                  <div><span>프로토콜 추가</span><strong>{preview.summary?.protocol_add_count || 0}</strong></div>
+                  <div><span>송신 노드 추가</span><strong>{preview.summary?.tx_add_count || 0}</strong></div>
+                  <div><span>수신 노드 추가</span><strong>{preview.summary?.rx_add_count || 0}</strong></div>
+                  <div><span>필드 추가</span><strong>{preview.summary?.field_copy_count || preview.summary?.enum_copy_count || 0}</strong></div>
+                  <div><span>참조 변경</span><strong>{preview.summary?.reference_redirect_count || 0}</strong></div>
+                </div>
+
+                {preview.merged_protocol && (
+                  <div className="merge-preview-row"><span>최종 프로토콜</span><strong>{preview.merged_protocol}</strong></div>
+                )}
+
+                {(preview.field_actions || []).some(item => item.action === 'COPY') && (
+                  <div className="merge-preview-list">
+                    <strong>추가될 필드</strong>
+                    {(preview.field_actions || []).filter(item => item.action === 'COPY').slice(0, 12).map(item => (
+                      <span key={item.source_field_id}>{item.source_message}.{item.source_name} → <b>{item.target_name}</b></span>
+                    ))}
+                    {(preview.field_actions || []).filter(item => item.action === 'COPY').length > 12 && <em>외 {(preview.field_actions || []).filter(item => item.action === 'COPY').length - 12}건</em>}
+                  </div>
+                )}
+
+                {(preview.discarded_metadata || []).some(item => item.infocode || item.period) && (
+                  <div className="merge-warning">
+                    대표 메시지의 정보코드·주기를 유지합니다. 머지되는 메시지의 정보코드/주기는 제거됩니다.
+                  </div>
+                )}
+              </>
+            )}
+
+            {(preview.blockers || []).length > 0 && (
+              <div className="merge-blockers">
+                <strong>머지할 수 없는 항목이 있습니다.</strong>
+                {(preview.blockers || []).map((blocker, index) => <span key={index}>{blocker}</span>)}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="merge-modal-actions">
+          <button type="button" className="ghost" onClick={onClose}>취소</button>
+          <button type="button" className="ghost" disabled={busy || !canPreview} onClick={loadPreview}>{busy ? '확인 중...' : '미리보기'}</button>
+          <button type="button" disabled={busy || !preview || (preview.blockers || []).length > 0} onClick={applyMerge}>머지 실행</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const fileInputId = useId();
   const [file, setFile] = useState(null);
