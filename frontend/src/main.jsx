@@ -2344,19 +2344,15 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
 
   function toggleItem(itemId) {
     const id = Number(itemId);
+    const next = new Set(selectedIds);
+    const wasSelected = next.has(id);
+    if (wasSelected) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+    if (wasSelected && Number(targetId) === id) setTargetId('');
+    if (!wasSelected && !targetId) setTargetId(String(id));
     setPreview(null);
     setLocalError('');
-    setSelectedIds(current => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-        if (Number(targetId) === id) setTargetId('');
-      } else {
-        next.add(id);
-        if (!targetId) setTargetId(String(id));
-      }
-      return next;
-    });
   }
 
   function chooseRepresentative(itemId) {
