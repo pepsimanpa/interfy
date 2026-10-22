@@ -3855,6 +3855,8 @@ const MESSAGE_HISTORY_LABELS = {
 
 function getHistoryActionLabel(history) {
   if (history?.after_json?.partial_update) return '부분 업데이트';
+  if (history?.after_json?.target_merge) return '노드 머지';
+  if (history?.after_json?.message_merge) return '메시지 머지';
   return HISTORY_ACTION_LABELS[String(history?.change_type || '')] || String(history?.change_type || '-');
 }
 
@@ -3968,6 +3970,35 @@ function buildHistoryDetailLines(history) {
     return [`메시지 삭제: ${valueText(before?.name)}`];
   }
   if (type === 'UPDATE') {
+    const targetMerge = after?.target_merge;
+    if (targetMerge) {
+      const lines = [
+        `대표 노드: ${valueText(targetMerge.target?.name)}`,
+        `삭제된 중복 노드: ${valueText(targetMerge.summary?.removed_source_count)}개`,
+        `송신 연결 이동: ${valueText(targetMerge.summary?.moved_tx)}건`,
+        `수신 연결 이동: ${valueText(targetMerge.summary?.moved_rx)}건`,
+        `중복 연결 정리: ${valueText(targetMerge.summary?.removed_duplicate_links)}건`,
+      ];
+      return lines;
+    }
+
+    const messageMerge = after?.message_merge;
+    if (messageMerge) {
+      const summary = messageMerge.summary || {};
+      const lines = [
+        `대표 메시지: ${valueText(messageMerge.target?.struct_name)}${messageMerge.target?.name ? ` (${messageMerge.target.name})` : ''}`,
+        `삭제된 중복 메시지: ${(messageMerge.removed_sources || []).length}개`,
+        `프로토콜: ${valueText(messageMerge.merged_protocol)}`,
+        `필드 추가: ${valueText(summary.field_copy_count || summary.enum_copy_count || 0)}개`,
+        `송신 노드 추가: ${valueText(summary.tx_add_count || 0)}개 / 수신 노드 추가: ${valueText(summary.rx_add_count || 0)}개`,
+        `참조 메시지 변경: ${valueText(summary.reference_redirect_count || 0)}건`,
+      ];
+      (messageMerge.field_actions || []).filter(item => item.action === 'COPY').slice(0, 8).forEach(item => {
+        lines.push(`필드 병합: ${item.source_message}.${item.source_name} → ${item.target_name}`);
+      });
+      return lines;
+    }
+
     const partial = after?.partial_update;
     if (partial) {
       const lines = [`파일: ${valueText(partial.filename)}`, `적용 메시지: ${valueText(partial.message_count)}개`];
