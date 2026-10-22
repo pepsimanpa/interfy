@@ -534,6 +534,12 @@ def _build_message_merge_plan(db: Session, project_id: int, target_id: int, sour
     merged_protocol = normalize_protocol_string([row.protocol for row in all_merge_messages])
     current_protocol = normalize_protocol_string(target.protocol)
 
+    reference_owner_ids = {field.message_id for field in reference_rows}
+    reference_owner_names = {
+        row.id: _message_name(row)
+        for row in db.query(Message).filter(Message.id.in_(reference_owner_ids)).all()
+    } if reference_owner_ids else {}
+
     return {
         "kind": "MESSAGE",
         "target": {
@@ -571,6 +577,7 @@ def _build_message_merge_plan(db: Session, project_id: int, target_id: int, sour
             "field_id": field.id,
             "message_id": field.message_id,
             "field_name": field.name,
+            "owner_struct_name": reference_owner_names.get(field.message_id, str(field.message_id)),
             "from_message_id": field.ref_message_id,
             "to_message_id": target.id,
         } for field in reference_rows],
