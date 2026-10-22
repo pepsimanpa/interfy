@@ -2110,10 +2110,167 @@ function MessageProtocols({ value = '' }) {
 }
 
 function MessageDevices({ targets = [] }) {
+  const [expanded, setExpanded] = useState(false);
   if (!targets.length) return <span className="muted small">-</span>;
+
+  const visible = expanded ? targets : targets.slice(0, 2);
+  const hiddenCount = Math.max(0, targets.length - 2);
+  const fullTitle = targets.map(target => target.name).join('\n');
+
   return (
-    <div className="message-device-list">
-      {targets.map((target, index) => <span key={target.id ?? `${target.name}-${index}`} className="message-device-item">{target.name}</span>)}
+    <div className={expanded ? 'message-device-list expanded' : 'message-device-list'} title={fullTitle}>
+      {visible.map((target, index) => (
+        <span
+          key={target.id ?? `${target.name}-${index}`}
+          className="message-device-item"
+          title={target.name}
+        >
+          {target.name}
+        </span>
+      ))}
+      {!expanded && hiddenCount > 0 && (
+        <button
+          type="button"
+          className="message-device-more"
+          title={`나머지 ${hiddenCount}개 노드 보기`}
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded(true);
+          }}
+        >
+          +{hiddenCount}개
+        </button>
+      )}
+      {expanded && targets.length > 2 && (
+        <button
+          type="button"
+          className="message-device-more collapse"
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded(false);
+          }}
+        >
+          접기
+        </button>
+      )}
+    </div>
+  );
+}
+
+function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder = '노드 선택', emptyText = '등록된 노드가 없습니다.' }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState('ALL');
+  const selectedSet = new Set((selectedIds || []).map(Number));
+  const selectedTargets = targets.filter(target => selectedSet.has(Number(target.id)));
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filteredTargets = targets.filter(target => {
+    const isSelected = selectedSet.has(Number(target.id));
+    if (view === 'SELECTED' && !isSelected) return false;
+    if (view === 'UNSELECTED' && isSelected) return false;
+    if (!normalizedQuery) return true;
+    return (
+      String(target.name || '').toLowerCase().includes(normalizedQuery) ||
+      String(target.description || '').toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  function toggle(targetId) {
+    const next = new Set(selectedSet);
+    const id = Number(targetId);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange?.([...next]);
+  }
+
+  function remove(targetId) {
+    onChange?.((selectedIds || []).map(Number).filter(id => id !== Number(targetId)));
+  }
+
+  function selectFiltered() {
+    const next = new Set(selectedSet);
+    filteredTargets.forEach(target => next.add(Number(target.id)));
+    onChange?.([...next]);
+  }
+
+  function clearSelected() {
+    onChange?.([]);
+  }
+
+  if (!targets.length) return <p className="muted small">{emptyText}</p>;
+
+  return (
+    <div className={open ? 'node-multiselect open' : 'node-multiselect'}>
+      <button type="button" className="node-multiselect-trigger" onClick={() => setOpen(current => !current)}>
+        <span className="node-multiselect-summary">
+          {selectedTargets.length === 0 ? (
+            <span className="muted">{placeholder}</span>
+          ) : (
+            <>
+              {selectedTargets.slice(0, 2).map(target => <span key={target.id} className="node-select-chip">{target.name}</span>)}
+              {selectedTargets.length > 2 && <span className="node-select-count">+{selectedTargets.length - 2}개</span>}
+            </>
+          )}
+        </span>
+        <span className="node-multiselect-chevron">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div className="node-multiselect-popover">
+          <div className="node-multiselect-selected-head">
+            <strong>선택됨 {selectedTargets.length}</strong>
+            {selectedTargets.length > 0 && <button type="button" className="ghost" onClick={clearSelected}>전체 해제</button>}
+          </div>
+
+          {selectedTargets.length > 0 && (
+            <div className="node-multiselect-selected">
+              {selectedTargets.slice(0, 6).map(target => (
+                <span key={target.id} className="node-select-chip removable" title={target.name}>
+                  {target.name}
+                  <button type="button" aria-label={`${target.name} 선택 해제`} onClick={() => remove(target.id)}>×</button>
+                </span>
+              ))}
+              {selectedTargets.length > 6 && <span className="node-select-count">+{selectedTargets.length - 6}개</span>}
+            </div>
+          )}
+
+          <div className="node-multiselect-search">
+            <Search size={14}/>
+            <input
+              autoFocus
+              value={query}
+              placeholder="노드 검색..."
+              onChange={event => setQuery(event.target.value)}
+            />
+          </div>
+
+          <div className="node-multiselect-tabs">
+            <button type="button" className={view === 'ALL' ? 'active' : ''} onClick={() => setView('ALL')}>전체</button>
+            <button type="button" className={view === 'SELECTED' ? 'active' : ''} onClick={() => setView('SELECTED')}>선택됨</button>
+            <button type="button" className={view === 'UNSELECTED' ? 'active' : ''} onClick={() => setView('UNSELECTED')}>미선택</button>
+          </div>
+
+          <div className="node-multiselect-list">
+            {filteredTargets.map(target => (
+              <label key={target.id} className="node-multiselect-option" title={target.description || target.name}>
+                <input type="checkbox" checked={selectedSet.has(Number(target.id))} onChange={() => toggle(target.id)} />
+                <span><strong>{target.name}</strong>{target.description && <small>{target.description}</small>}</span>
+              </label>
+            ))}
+            {!filteredTargets.length && <div className="node-multiselect-empty">조건에 맞는 노드가 없습니다.</div>}
+          </div>
+
+          <div className="node-multiselect-actions">
+            <button type="button" className="ghost" disabled={!filteredTargets.length} onClick={selectFiltered}>
+              {normalizedQuery ? '검색 결과 전체 선택' : '현재 목록 전체 선택'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)}>완료</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2707,6 +2864,12 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
 
   useEffect(() => () => onDirtyChange?.(false), []);
 
+  function swapMessageTargets() {
+    const currentTx = [...txTargetIds];
+    setTxTargetIds([...rxTargetIds]);
+    setRxTargetIds(currentTx);
+  }
+
   async function saveMessage(e) {
     e.preventDefault();
     if (!isValidIdentifier(messageForm.struct_name)) { alert(`메시지 이름: ${IDENTIFIER_HELP}`); return; }
@@ -2786,8 +2949,18 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
           <label>프로토콜<ProtocolEditor value={messageForm.protocol || ''} onChange={protocol => setMessageForm({ ...messageForm, protocol })} suggestions={protocolSuggestions} /></label>
           <label>설명<input value={messageForm.description} {...overflowInputHandlers(messageForm.description)} onChange={e => setMessageForm({ ...messageForm, description: e.target.value })} /></label>
           <div className="form-wide"><div className="reference-inline-label">태그<button type="button" className="reference-inline-add" title="태그 추가/관리" onClick={() => onOpenReferencePanel?.('tag')}><Plus size={12}/></button></div><LabelCheckboxes labels={labels} selectedIds={labelIds} onChange={setLabelIds} /></div>
-          <div className="form-wide"><div className="reference-inline-label">송신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div><LabelCheckboxes labels={integrationTargets} emptyText="등록된 노드가 없습니다." selectedIds={txTargetIds} onChange={setTxTargetIds} /></div>
-          <div className="form-wide"><div className="reference-inline-label">수신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div><LabelCheckboxes labels={integrationTargets} emptyText="등록된 노드가 없습니다." selectedIds={rxTargetIds} onChange={setRxTargetIds} /></div>
+          <div className="form-wide node-selection-row">
+            <div className="reference-inline-label">송신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div>
+            <NodeMultiSelect targets={integrationTargets} selectedIds={txTargetIds} onChange={setTxTargetIds} placeholder="송신 노드 선택" />
+          </div>
+          <div className="form-wide node-target-swap-row">
+            <span />
+            <button type="button" className="ghost node-target-swap" title="송신 노드와 수신 노드를 서로 바꿉니다." onClick={swapMessageTargets}><RefreshCw size={13}/> 송신 ↔ 수신 바꾸기</button>
+          </div>
+          <div className="form-wide node-selection-row">
+            <div className="reference-inline-label">수신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div>
+            <NodeMultiSelect targets={integrationTargets} selectedIds={rxTargetIds} onChange={setRxTargetIds} placeholder="수신 노드 선택" />
+          </div>
           <button><Save size={16}/> 메시지 저장</button>
         </form>
       </div>
