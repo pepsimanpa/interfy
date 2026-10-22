@@ -18,7 +18,9 @@ from ..models import (
     MessageField,
     MessageGroupItem,
     MessageLabelItem,
+    MessageRxLabelItem,
     MessageRxTargetItem,
+    MessageTxLabelItem,
     MessageTxTargetItem,
     Project,
     User,
@@ -730,6 +732,8 @@ def apply_message_merge(
     # Detach rows that otherwise keep foreign keys to the source messages.
     db.query(MessageGroupItem).filter(MessageGroupItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
     db.query(MessageLabelItem).filter(MessageLabelItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
+    db.query(MessageTxLabelItem).filter(MessageTxLabelItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
+    db.query(MessageRxLabelItem).filter(MessageRxLabelItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
     db.query(MessageTxTargetItem).filter(MessageTxTargetItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
     db.query(MessageRxTargetItem).filter(MessageRxTargetItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
     db.query(MessageChangeHistory).filter(MessageChangeHistory.message_id.in_(source_id_set)).update(
