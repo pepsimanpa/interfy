@@ -799,6 +799,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   });
   const [isResizingSplit, setIsResizingSplit] = useState(false);
   const [referencePanel, setReferencePanel] = useState({ open: false, tab: 'node', editTargetId: null });
+  const [messageMergeOpen, setMessageMergeOpen] = useState(false);
 
   function openReferencePanel(tab = 'node', editTargetId = null) {
     setReferencePanel({ open: true, tab, editTargetId: tab === 'node' ? editTargetId : null });
@@ -1145,11 +1146,25 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (String(tagFilter) === String(labelId)) setTagFilter('ALL');
   }
 
+  async function handleTargetMerged() {
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    await onReload?.();
+  }
+
+  async function handleMessageMerged(result) {
+    setSelectedViewerMessageId(result?.target_id || null);
+    setSelectedMessage?.(null);
+    await onReload?.();
+  }
+
   const referencePanelElement = (
     <ReferenceSidePanel
       open={referencePanel.open}
       initialTab={referencePanel.tab}
       initialEditTargetId={referencePanel.editTargetId}
+      api={api}
+      projectId={project.id}
       labels={labels}
       targets={integrationTargets}
       onClose={closeReferencePanel}
@@ -1159,6 +1174,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       onCreateTarget={onCreateTarget}
       onUpdateTarget={onUpdateTarget}
       onDeleteTarget={deleteTargetFromPanel}
+      onMerged={handleTargetMerged}
     />
   );
 
@@ -1339,6 +1355,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
           </div>
           <div className="button-row compact">
             {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
+            <button type="button" className="ghost" disabled={messages.length < 2} onClick={() => setMessageMergeOpen(true)}><Layers size={14}/> 메시지 머지</button>
             <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
           </div>
         </div>
@@ -1395,6 +1412,16 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
         </div>
       </section>
       {referencePanelElement}
+      {messageMergeOpen && (
+        <MergeToolDialog
+          kind="message"
+          api={api}
+          projectId={project.id}
+          items={messages}
+          onClose={() => setMessageMergeOpen(false)}
+          onMerged={handleMessageMerged}
+        />
+      )}
     </div>
   );
 }
@@ -2880,12 +2907,13 @@ function ProjectSettingsPanel({ projectForm, setProjectForm, onSaveProject, onDe
   );
 }
 
-function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = null, labels = [], targets = [], onClose, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget }) {
+function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = null, api, projectId, labels = [], targets = [], onClose, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onMerged }) {
   const [tab, setTab] = useState(initialTab);
   const [nodeForm, setNodeForm] = useState({ name: '', description: '' });
   const [tagForm, setTagForm] = useState({ name: '', description: '' });
   const [editingNodeId, setEditingNodeId] = useState(null);
   const [editingTagId, setEditingTagId] = useState(null);
+  const [nodeMergeOpen, setNodeMergeOpen] = useState(false);
 
   function resetNodeForm() {
     setEditingNodeId(null);
@@ -2920,6 +2948,7 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
     setTab(initialTab || 'node');
     resetNodeForm();
     resetTagForm();
+    setNodeMergeOpen(false);
     if (initialTab === 'node' && initialEditTargetId != null) {
       const target = targets.find(item => Number(item.id) === Number(initialEditTargetId));
       if (target) beginEditNode(target);
@@ -2992,7 +3021,10 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
                 <button>{editingNodeId != null ? <Save size={14}/> : <Plus size={14}/>} {editingNodeId != null ? '저장' : '추가'}</button>
               </div>
             </form>
-            <div className="reference-drawer-list-head"><strong>등록된 노드</strong><span>더블클릭으로도 수정 패널을 열 수 있습니다.</span></div>
+            <div className="reference-drawer-list-head merge-enabled">
+              <div><strong>등록된 노드</strong><span>더블클릭으로도 수정 패널을 열 수 있습니다.</span></div>
+              <button type="button" className="ghost small-button" disabled={targets.length < 2} onClick={() => setNodeMergeOpen(true)}><Layers size={13}/> 노드 머지</button>
+            </div>
             <div className="reference-drawer-list">
               {targets.map(target => (
                 <div key={target.id} className={Number(editingNodeId) === Number(target.id) ? 'reference-drawer-item editing' : 'reference-drawer-item'}>
@@ -3031,6 +3063,20 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
           </>
         )}
       </aside>
+      {nodeMergeOpen && (
+        <MergeToolDialog
+          kind="target"
+          api={api}
+          projectId={projectId}
+          items={targets}
+          onClose={() => setNodeMergeOpen(false)}
+          onMerged={async result => {
+            setNodeMergeOpen(false);
+            resetNodeForm();
+            await onMerged?.(result);
+          }}
+        />
+      )}
     </div>
   );
 }
