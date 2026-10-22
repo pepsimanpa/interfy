@@ -286,6 +286,16 @@ def _field_signature(field: MessageField, mapped_ref_id: int | None = None) -> t
     )
 
 
+def _is_field_name_family(candidate_name: str, base_name: str) -> bool:
+    candidate = str(candidate_name or "").lower()
+    base = str(base_name or "").lower()
+    if candidate == base:
+        return True
+    if not candidate.startswith(base + "_"):
+        return False
+    return candidate[len(base) + 1:].isdigit()
+
+
 def _next_field_name(base_name: str, used_names: set[str]) -> str:
     base = str(base_name or "field").strip() or "field"
     candidate = base[:120]
@@ -375,15 +385,18 @@ def _build_message_merge_plan(db: Session, project_id: int, target_id: int, sour
             for field in sorted(source.fields or [], key=lambda item: ((item.order_index or 0), item.id or 0)):
                 mapped_ref = _mapped_ref_id(field.ref_message_id, merge_map)
                 signature = _field_signature(field, mapped_ref)
-                same_name = next((item for item in virtual_fields if item["name"].lower() == (field.name or "").lower()), None)
-                if same_name is not None and same_name["signature"] == signature:
+                identical_family = next((
+                    item for item in virtual_fields
+                    if _is_field_name_family(item["name"], field.name) and item["signature"] == signature
+                ), None)
+                if identical_family is not None:
                     field_actions.append({
                         "action": "SKIP_IDENTICAL",
                         "source_message_id": source.id,
                         "source_message": _message_name(source),
                         "source_field_id": field.id,
                         "source_name": field.name,
-                        "target_name": field.name,
+                        "target_name": identical_family["name"],
                         "mapped_ref_id": mapped_ref,
                     })
                     continue
