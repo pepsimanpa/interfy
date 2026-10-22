@@ -735,12 +735,20 @@ def apply_message_merge(
 
     # Redirect references from messages that remain after the merge.
     reference_rows = db.query(MessageField).filter(MessageField.ref_message_id.in_(source_id_set)).all()
+    redirected_owner_ids: set[int] = set()
     for field in reference_rows:
         if field.message_id in source_id_set:
             continue
         field.ref_message_id = target.id
         if (field.type_kind or "BASIC").upper() in {"MESSAGE", "ENUM"}:
             field.type = _message_name(target)
+        if field.message_id != target.id:
+            redirected_owner_ids.add(field.message_id)
+
+    for owner_id in redirected_owner_ids:
+        owner = db.get(Message, owner_id)
+        if owner is not None:
+            owner.version = int(owner.version or 1) + 1
 
     # Detach rows that otherwise keep foreign keys to the source messages.
     db.query(MessageGroupItem).filter(MessageGroupItem.message_id.in_(source_id_set)).delete(synchronize_session=False)
@@ -779,6 +787,7 @@ def apply_message_merge(
                 "field_actions": plan["field_actions"],
                 "enum_actions": plan["enum_actions"],
                 "reference_redirects": plan["reference_redirects"],
+                "redirected_message_versions": sorted(redirected_owner_ids),
             }
         },
     ))
