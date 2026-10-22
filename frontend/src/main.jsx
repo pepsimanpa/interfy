@@ -2203,7 +2203,12 @@ function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder
   if (!targets.length) return <p className="muted small">{emptyText}</p>;
 
   return (
-    <div className={open ? 'node-multiselect open' : 'node-multiselect'}>
+    <div
+      className={open ? 'node-multiselect open' : 'node-multiselect'}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
       <button type="button" className="node-multiselect-trigger" onClick={() => setOpen(current => !current)}>
         <span className="node-multiselect-summary">
           {selectedTargets.length === 0 ? (
