@@ -783,6 +783,8 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
 function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels = [], integrationTargets = [], query = '', messageForm, setMessageForm, onCreateMessage, selectedMessage, setSelectedMessage, onCloseSelectedMessage, onSelectMessage, onDeleteMessage, onCopyMessage, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onOpenPartialUpdate, onReload, onDirtyChange }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [selectedRelationKey, setSelectedRelationKey] = useState(null);
+  const [viewerMode, setViewerMode] = useState(() => localStorage.getItem('interfy-viewer-mode') === 'message' ? 'message' : 'node');
+  const [selectedViewerMessageId, setSelectedViewerMessageId] = useState(null);
   const [protocolFilter, setProtocolFilter] = useState('ALL');
   const [tagFilter, setTagFilter] = useState('ALL');
   const [unlinkedOnly, setUnlinkedOnly] = useState(false);
@@ -797,6 +799,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   });
   const [isResizingSplit, setIsResizingSplit] = useState(false);
   const [referencePanel, setReferencePanel] = useState({ open: false, tab: 'node', editTargetId: null });
+  const [messageMergeOpen, setMessageMergeOpen] = useState(false);
 
   function openReferencePanel(tab = 'node', editTargetId = null) {
     setReferencePanel({ open: true, tab, editTargetId: tab === 'node' ? editTargetId : null });
@@ -809,6 +812,10 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   useEffect(() => {
     localStorage.setItem('interfy-design-split-percent', String(splitPercent));
   }, [splitPercent]);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-viewer-mode', viewerMode);
+  }, [viewerMode]);
 
   function beginSplitResize(event) {
     event.preventDefault();
@@ -883,6 +890,31 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesTextQuery(message, query)) return false;
     return true;
   }), [messages, protocolFilter, tagFilter, query]);
+
+  const messageViewerMessages = filteredForGraph;
+  const selectedViewerMessage = messageViewerMessages.find(message => Number(message.id) === Number(selectedViewerMessageId))
+    || messageViewerMessages[0]
+    || null;
+
+  function changeViewerMode(nextMode) {
+    if (nextMode !== 'node' && nextMode !== 'message') return;
+    setViewerMode(nextMode);
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    setUnlinkedOnly(false);
+    if (nextMode === 'message' && !selectedViewerMessageId && messageViewerMessages[0]) {
+      setSelectedViewerMessageId(messageViewerMessages[0].id);
+    }
+  }
+
+  function selectViewerMessage(messageId) {
+    if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
+    if (!selectedMessage) setSelectedMessage(null);
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    setUnlinkedOnly(false);
+    setSelectedViewerMessageId(Number(messageId));
+  }
 
   const relationMap = useMemo(() => {
     const map = new Map();
@@ -978,7 +1010,9 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const unlinkedMessages = useMemo(() => messages.filter(message => !isEnumDefinition(message) && (!(message.tx_targets || []).length || !(message.rx_targets || []).length)), [messages]);
 
   const displayedMessages = useMemo(() => messages.filter(message => {
-    if (unlinkedOnly) {
+    if (viewerMode === 'message') {
+      if (!selectedViewerMessage || Number(message.id) !== Number(selectedViewerMessage.id)) return false;
+    } else if (unlinkedOnly) {
       if (isEnumDefinition(message)) return false;
       if ((message.tx_targets || []).length && (message.rx_targets || []).length) return false;
     } else if (selectedRelation) {
@@ -993,11 +1027,20 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesLabelFilter(message, tagFilter)) return false;
     if (!messageMatchesTextQuery(message, query)) return false;
     return true;
-  }), [messages, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query]);
+  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query]);
 
-  const canReorder = !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim();
+  const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim();
 
   const currentContext = useMemo(() => {
+    if (viewerMode === 'message') {
+      if (!selectedViewerMessage) return { title: '메시지 중심', detail: '현재 필터 조건에 해당하는 메시지가 없습니다.' };
+      const txCount = (selectedViewerMessage.tx_targets || []).length;
+      const rxCount = (selectedViewerMessage.rx_targets || []).length;
+      return {
+        title: generatedNameOf(selectedViewerMessage),
+        detail: `선택 메시지의 송신 노드 ${txCount}개 · 수신 노드 ${rxCount}개`,
+      };
+    }
     if (unlinkedOnly) return { title: '미연결 메시지', detail: '송신 또는 수신 노드가 지정되지 않은 메시지' };
     if (selectedRelation) {
       const from = deviceMap.get(Number(selectedRelation.fromId));
@@ -1009,7 +1052,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       return { title: device?.name || '노드', detail: '선택한 노드의 송신 + 수신 메시지' };
     }
     return { title: '전체 메시지', detail: '노드나 관계를 선택하면 이 목록이 자동으로 필터링됩니다.' };
-  }, [unlinkedOnly, selectedRelation, selectedDeviceId, deviceMap]);
+  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, deviceMap]);
 
   function selectDevice(targetId) {
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
@@ -1103,11 +1146,25 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (String(tagFilter) === String(labelId)) setTagFilter('ALL');
   }
 
+  async function handleTargetMerged() {
+    setSelectedDeviceId(null);
+    setSelectedRelationKey(null);
+    await onReload?.();
+  }
+
+  async function handleMessageMerged(result) {
+    setSelectedViewerMessageId(result?.target_id || null);
+    setSelectedMessage?.(null);
+    await onReload?.();
+  }
+
   const referencePanelElement = (
     <ReferenceSidePanel
       open={referencePanel.open}
       initialTab={referencePanel.tab}
       initialEditTargetId={referencePanel.editTargetId}
+      api={api}
+      projectId={project.id}
       labels={labels}
       targets={integrationTargets}
       onClose={closeReferencePanel}
@@ -1117,6 +1174,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       onCreateTarget={onCreateTarget}
       onUpdateTarget={onUpdateTarget}
       onDeleteTarget={deleteTargetFromPanel}
+      onMerged={handleTargetMerged}
     />
   );
 
@@ -1207,38 +1265,61 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     return relationGeometry(relation).source;
   }
 
+  const visualizationTop = viewerMode === 'message' ? (
+    <MessageCenteredVisualization
+      messages={messageViewerMessages}
+      selectedMessage={selectedViewerMessage}
+      onSelectMessage={selectViewerMessage}
+      onOpenMessage={onSelectMessage}
+      protocolFilter={protocolFilter}
+      setProtocolFilter={setProtocolFilter}
+      tagFilter={tagFilter}
+      setTagFilter={setTagFilter}
+      labels={labels}
+      protocolOptions={protocolOptions}
+      onChangeViewerMode={changeViewerMode}
+      onOpenReferences={() => openReferencePanel('node')}
+      onEditNode={(target) => openReferencePanel('node', target.id)}
+      onOpenPartialUpdate={onOpenPartialUpdate}
+    />
+  ) : (
+    <DesignVisualizationTop
+      integrationTargets={integrationTargets}
+      visibleTargets={graphTargets}
+      relationMap={graphRelations}
+      positions={positions}
+      selectedDeviceId={selectedDeviceId}
+      selectedRelationKey={selectedRelationKey}
+      protocolFilter={protocolFilter}
+      setProtocolFilter={setProtocolFilter}
+      tagFilter={tagFilter}
+      setTagFilter={setTagFilter}
+      labels={labels}
+      protocolOptions={protocolOptions}
+      unlinkedCount={unlinkedMessages.length}
+      unlinkedOnly={unlinkedOnly}
+      onSelectDevice={selectDevice}
+      onSelectRelation={selectRelation}
+      onShowAll={showAll}
+      onShowUnlinked={showUnlinked}
+      onOpenReferences={() => openReferencePanel('node')}
+      onEditNode={(target) => openReferencePanel('node', target.id)}
+      onOpenPartialUpdate={onOpenPartialUpdate}
+      relationPath={relationPath}
+      relationLabelPosition={relationLabelPosition}
+      relationSourcePosition={relationSourcePosition}
+      showProtocol={showProtocolOnGraph}
+      setShowProtocol={setShowProtocolOnGraph}
+      showMessageCount={showMessageCountOnGraph}
+      setShowMessageCount={setShowMessageCountOnGraph}
+      onChangeViewerMode={changeViewerMode}
+    />
+  );
+
   if (selectedMessage) {
     return (
       <div className="interface-design-shell" style={splitGridStyle}>
-        <DesignVisualizationTop
-          integrationTargets={integrationTargets}
-          visibleTargets={graphTargets}
-          relationMap={graphRelations}
-          positions={positions}
-          selectedDeviceId={selectedDeviceId}
-          selectedRelationKey={selectedRelationKey}
-          protocolFilter={protocolFilter}
-          setProtocolFilter={setProtocolFilter}
-          tagFilter={tagFilter}
-          setTagFilter={setTagFilter}
-          labels={labels}
-          protocolOptions={protocolOptions}
-          unlinkedCount={unlinkedMessages.length}
-          unlinkedOnly={unlinkedOnly}
-          onSelectDevice={selectDevice}
-          onSelectRelation={selectRelation}
-          onShowAll={showAll}
-          onShowUnlinked={showUnlinked}
-          onOpenReferences={() => openReferencePanel('node')}
-          onEditNode={(target) => openReferencePanel('node', target.id)}
-          relationPath={relationPath}
-          relationLabelPosition={relationLabelPosition}
-          relationSourcePosition={relationSourcePosition}
-          showProtocol={showProtocolOnGraph}
-          setShowProtocol={setShowProtocolOnGraph}
-          showMessageCount={showMessageCountOnGraph}
-          setShowMessageCount={setShowMessageCountOnGraph}
-        />
+        {visualizationTop}
         {splitHandle}
         <section className="design-lower design-editor-lower">
           <div className="design-lower-head">
@@ -1262,36 +1343,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
 
   return (
     <div className="interface-design-shell" style={splitGridStyle}>
-      <DesignVisualizationTop
-        integrationTargets={integrationTargets}
-        visibleTargets={graphTargets}
-        relationMap={graphRelations}
-        positions={positions}
-        selectedDeviceId={selectedDeviceId}
-        selectedRelationKey={selectedRelationKey}
-        protocolFilter={protocolFilter}
-        setProtocolFilter={setProtocolFilter}
-        tagFilter={tagFilter}
-        setTagFilter={setTagFilter}
-        labels={labels}
-        protocolOptions={protocolOptions}
-        unlinkedCount={unlinkedMessages.length}
-        unlinkedOnly={unlinkedOnly}
-        onSelectDevice={selectDevice}
-        onSelectRelation={selectRelation}
-        onShowAll={showAll}
-        onShowUnlinked={showUnlinked}
-        onOpenReferences={() => openReferencePanel('node')}
-        onEditNode={(target) => openReferencePanel('node', target.id)}
-        onOpenPartialUpdate={onOpenPartialUpdate}
-        relationPath={relationPath}
-        relationLabelPosition={relationLabelPosition}
-        relationSourcePosition={relationSourcePosition}
-        showProtocol={showProtocolOnGraph}
-        setShowProtocol={setShowProtocolOnGraph}
-        showMessageCount={showMessageCountOnGraph}
-        setShowMessageCount={setShowMessageCountOnGraph}
-      />
+      {visualizationTop}
 
       {splitHandle}
 
@@ -1302,7 +1354,8 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
             <p>{currentContext.detail}</p>
           </div>
           <div className="button-row compact">
-            <button type="button" className="ghost" onClick={showAll}>전체 보기</button>
+            {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
+            <button type="button" className="ghost" disabled={messages.length < 2} onClick={() => setMessageMergeOpen(true)}><Layers size={14}/> 메시지 머지</button>
             <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
           </div>
         </div>
@@ -1359,11 +1412,227 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
         </div>
       </section>
       {referencePanelElement}
+      {messageMergeOpen && (
+        <MergeToolDialog
+          kind="message"
+          api={api}
+          projectId={project.id}
+          items={messages}
+          onClose={() => setMessageMergeOpen(false)}
+          onMerged={handleMessageMerged}
+        />
+      )}
     </div>
   );
 }
 
-function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount }) {
+function DesignViewModeToggle({ mode, onChange }) {
+  return (
+    <div className="design-view-mode-toggle" role="group" aria-label="뷰어 기준 전환">
+      <button type="button" className={mode === 'node' ? 'active' : ''} onClick={() => onChange?.('node')}><Layers size={13}/> 노드 중심</button>
+      <button type="button" className={mode === 'message' ? 'active' : ''} onClick={() => onChange?.('message')}><MessageSquare size={13}/> 메시지 중심</button>
+    </div>
+  );
+}
+
+function MessageCenteredVisualization({ messages = [], selectedMessage, onSelectMessage, onOpenMessage, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, onChangeViewerMode, onOpenReferences, onEditNode, onOpenPartialUpdate }) {
+  const txTargets = selectedMessage?.tx_targets || [];
+  const rxTargets = selectedMessage?.rx_targets || [];
+  const [messagePaneWidth, setMessagePaneWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('interfy-message-view-pane-width'));
+    return Number.isFinite(saved) && saved >= 220 && saved <= 460 ? saved : 260;
+  });
+  const [resizingMessagePane, setResizingMessagePane] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-message-view-pane-width', String(messagePaneWidth));
+  }, [messagePaneWidth]);
+
+  function beginMessagePaneResize(event) {
+    event.preventDefault();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+
+    const rect = shell.getBoundingClientRect();
+    setResizingMessagePane(true);
+    document.body.classList.add('message-pane-resizing');
+
+    const onPointerMove = moveEvent => {
+      const maxWidth = Math.min(460, Math.max(220, rect.width - 360));
+      const nextWidth = moveEvent.clientX - rect.left;
+      setMessagePaneWidth(Math.min(maxWidth, Math.max(220, nextWidth)));
+    };
+    const onPointerUp = () => {
+      setResizingMessagePane(false);
+      document.body.classList.remove('message-pane-resizing');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  }
+
+  function handleMessagePaneResizeKeyDown(event) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.max(220, value - 10));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setMessagePaneWidth(value => Math.min(460, value + 10));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setMessagePaneWidth(260);
+    }
+  }
+
+  function compactText(value, maxLength = 18) {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  }
+
+  function sidePositions(targets, side) {
+    const count = targets.length;
+    if (!count) return new Map();
+    const columns = Math.min(3, Math.max(1, Math.ceil(count / 6)));
+    const perColumn = Math.ceil(count / columns);
+    const xSets = side === 'tx' ? [190, 105, 38] : [710, 795, 862];
+    const map = new Map();
+
+    targets.forEach((target, index) => {
+      const column = Math.floor(index / perColumn);
+      const row = index % perColumn;
+      const countInColumn = Math.min(perColumn, count - column * perColumn);
+      const y = 46 + ((310 / (countInColumn + 1)) * (row + 1));
+      map.set(`${target.id}-${index}`, { x: xSets[column] ?? xSets[xSets.length - 1], y });
+    });
+    return map;
+  }
+
+  const txPositions = sidePositions(txTargets, 'tx');
+  const rxPositions = sidePositions(rxTargets, 'rx');
+  const protocols = selectedMessage ? messageProtocols(selectedMessage) : [];
+  const messageMeta = selectedMessage
+    ? [
+        protocols.length ? protocols.join(', ') : '',
+        selectedMessage.infocode ? `정보코드 ${selectedMessage.infocode}` : '',
+      ].filter(Boolean).join(' · ')
+    : '';
+
+  return (
+    <section
+      className="design-upper message-centered-upper"
+      style={{ gridTemplateColumns: `${messagePaneWidth}px 7px minmax(0, 1fr)` }}
+    >
+      <aside className="design-device-pane design-message-pane">
+        <div className="design-pane-title"><strong>메시지</strong><span>{messages.length}</span></div>
+        {messages.map(message => {
+          const active = Number(selectedMessage?.id) === Number(message.id);
+          return (
+            <button
+              type="button"
+              key={message.id}
+              title={message.name ? `${generatedNameOf(message)}\n${message.name}` : generatedNameOf(message)}
+              className={active ? 'design-device design-message-nav active' : 'design-device design-message-nav'}
+              onClick={() => onSelectMessage?.(message.id)}
+            >
+              <MessageSquare size={13}/>
+              <span className="design-message-nav-main"><strong>{generatedNameOf(message)}</strong><small>{message.name || '-'}</small></span>
+              {message.infocode && <em>{message.infocode}</em>}
+            </button>
+          );
+        })}
+        {!messages.length && <div className="design-message-pane-empty">현재 조건의 메시지가 없습니다.</div>}
+      </aside>
+
+      <div
+        className={`design-message-pane-resizer ${resizingMessagePane ? 'active' : ''}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuemin={220}
+        aria-valuemax={460}
+        aria-valuenow={Math.round(messagePaneWidth)}
+        tabIndex={0}
+        title="드래그하여 메시지 목록 너비 조절 · 더블클릭하면 기본 너비"
+        onPointerDown={beginMessagePaneResize}
+        onDoubleClick={() => setMessagePaneWidth(260)}
+        onKeyDown={handleMessagePaneResizeKeyDown}
+      >
+        <span />
+      </div>
+
+      <div className="design-canvas-pane">
+        <div className="design-toolbar">
+          <DesignViewModeToggle mode="message" onChange={onChangeViewerMode} />
+          <div className="design-filter-field"><span>프로토콜</span><select value={protocolFilter} onChange={e => setProtocolFilter(e.target.value)}><option value="ALL">전체</option>{protocolOptions.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}</select></div>
+          <div className="design-filter-field"><span>태그</span><select value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="ALL">전체</option><option value="NONE">태그 없음</option>{labels.map(label => <option key={label.id} value={String(label.id)}>{label.name}</option>)}</select></div>
+          <div className="design-focus-badge message">메시지 포커스</div>
+          <div className="design-toolbar-summary"><strong>{messages.length}</strong> 메시지{selectedMessage ? ` · 송신 ${txTargets.length} · 수신 ${rxTargets.length}` : ''}</div>
+          {onOpenPartialUpdate && <button type="button" className="ghost design-partial-update-button" onClick={onOpenPartialUpdate}><Upload size={14}/> 부분 업데이트</button>}
+        </div>
+
+        <button type="button" className="design-floating-add" title="노드 또는 태그 추가" aria-label="노드 또는 태그 추가" onClick={onOpenReferences}><Plus size={19}/></button>
+
+        <div className="design-svg-wrap">
+          {selectedMessage ? (
+            <svg className="design-network message-centered-network" viewBox="0 0 900 390" role="img" aria-label={`${generatedNameOf(selectedMessage)} 송수신 노드 관계`}>
+              <defs>
+                <marker id="messageViewArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M 0 0 L 8 4 L 0 8 z" className="design-arrow-head"/></marker>
+              </defs>
+
+              <text className="message-view-role-title" x="150" y="25" textAnchor="middle">송신 노드</text>
+              <text className="message-view-role-title" x="750" y="25" textAnchor="middle">수신 노드</text>
+
+              {txTargets.map((target, index) => {
+                const pos = txPositions.get(`${target.id}-${index}`);
+                if (!pos) return null;
+                const path = `M ${pos.x + 49} ${pos.y} C ${pos.x + 105} ${pos.y}, 315 195, 350 195`;
+                return (
+                  <g key={`tx-${target.id}-${index}`}>
+                    <g className="design-edge message-view-edge"><path className="design-edge-line" d={path} markerEnd="url(#messageViewArrow)" /></g>
+                    <g className="design-node message-view-node" transform={`translate(${pos.x},${pos.y})`} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEditNode?.(target); }}>
+                      <rect x="-49" y="-17" width="98" height="34" rx="7"/>
+                      <text className="design-node-name" textAnchor="middle" y="1">{compactText(target.name, 12)}</text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {rxTargets.map((target, index) => {
+                const pos = rxPositions.get(`${target.id}-${index}`);
+                if (!pos) return null;
+                const path = `M 550 195 C 585 195, ${pos.x - 105} ${pos.y}, ${pos.x - 49} ${pos.y}`;
+                return (
+                  <g key={`rx-${target.id}-${index}`}>
+                    <g className="design-edge message-view-edge"><path className="design-edge-line" d={path} markerEnd="url(#messageViewArrow)" /></g>
+                    <g className="design-node message-view-node" transform={`translate(${pos.x},${pos.y})`} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEditNode?.(target); }}>
+                      <rect x="-49" y="-17" width="98" height="34" rx="7"/>
+                      <text className="design-node-name" textAnchor="middle" y="1">{compactText(target.name, 12)}</text>
+                    </g>
+                  </g>
+                );
+              })}
+
+              {!txTargets.length && <text className="message-view-empty-side" x="155" y="198" textAnchor="middle">송신 노드 없음</text>}
+              {!rxTargets.length && <text className="message-view-empty-side" x="745" y="198" textAnchor="middle">수신 노드 없음</text>}
+
+              <g className="design-node message-view-hub" transform="translate(450,195)" onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onOpenMessage?.(selectedMessage); }}>
+                <rect x="-100" y="-42" width="200" height="84" rx="12"/>
+                <text className="message-view-hub-name" textAnchor="middle" y="-13">{compactText(generatedNameOf(selectedMessage), 28)}</text>
+                <text className="message-view-hub-purpose" textAnchor="middle" y="8">{compactText(selectedMessage.name || '-', 30)}</text>
+                <text className="message-view-hub-meta" textAnchor="middle" y="28">{compactText(messageMeta || '프로토콜/정보코드 없음', 34)}</text>
+              </g>
+            </svg>
+          ) : (
+            <div className="design-empty-graph"><MessageSquare size={32}/><strong>표시할 메시지가 없습니다.</strong><span>검색·프로토콜·태그 필터를 확인하세요.</span></div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
   // Draw the selected relation last so its line/label is never hidden by another relation.
   const renderRelations = [...relationMap].sort((a, b) => Number(a.key === selectedRelationKey) - Number(b.key === selectedRelationKey));
   const focusView = Boolean(selectedDeviceId);
@@ -1404,6 +1673,7 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
 
       <div className="design-canvas-pane">
         <div className="design-toolbar">
+          <DesignViewModeToggle mode="node" onChange={onChangeViewerMode} />
           <div className="design-filter-field"><span>프로토콜</span><select value={protocolFilter} onChange={e => setProtocolFilter(e.target.value)}><option value="ALL">전체</option>{protocolOptions.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}</select></div>
           <div className="design-filter-field"><span>태그</span><select value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="ALL">전체</option><option value="NONE">태그 없음</option>{labels.map(label => <option key={label.id} value={String(label.id)}>{label.name}</option>)}</select></div>
           <div className="design-display-options" aria-label="관계 표시 옵션">
@@ -1867,10 +2137,402 @@ function MessageProtocols({ value = '' }) {
 }
 
 function MessageDevices({ targets = [] }) {
+  const [expanded, setExpanded] = useState(false);
   if (!targets.length) return <span className="muted small">-</span>;
+
+  const visible = expanded ? targets : targets.slice(0, 2);
+  const hiddenCount = Math.max(0, targets.length - 2);
+  const fullTitle = targets.map(target => target.name).join('\n');
+
   return (
-    <div className="message-device-list">
-      {targets.map((target, index) => <span key={target.id ?? `${target.name}-${index}`} className="message-device-item">{target.name}</span>)}
+    <div className={expanded ? 'message-device-list expanded' : 'message-device-list'} title={fullTitle}>
+      {visible.map((target, index) => (
+        <span
+          key={target.id ?? `${target.name}-${index}`}
+          className="message-device-item"
+          title={target.name}
+        >
+          {target.name}
+        </span>
+      ))}
+      {!expanded && hiddenCount > 0 && (
+        <button
+          type="button"
+          className="message-device-more"
+          title={`나머지 ${hiddenCount}개 노드 보기`}
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded(true);
+          }}
+        >
+          +{hiddenCount}개
+        </button>
+      )}
+      {expanded && targets.length > 2 && (
+        <button
+          type="button"
+          className="message-device-more collapse"
+          onClick={event => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded(false);
+          }}
+        >
+          접기
+        </button>
+      )}
+    </div>
+  );
+}
+
+function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder = '노드 선택', emptyText = '등록된 노드가 없습니다.' }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState('ALL');
+  const selectedSet = new Set((selectedIds || []).map(Number));
+  const selectedTargets = targets.filter(target => selectedSet.has(Number(target.id)));
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const filteredTargets = targets.filter(target => {
+    const isSelected = selectedSet.has(Number(target.id));
+    if (view === 'SELECTED' && !isSelected) return false;
+    if (view === 'UNSELECTED' && isSelected) return false;
+    if (!normalizedQuery) return true;
+    return (
+      String(target.name || '').toLowerCase().includes(normalizedQuery) ||
+      String(target.description || '').toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  function toggle(targetId) {
+    const next = new Set(selectedSet);
+    const id = Number(targetId);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange?.([...next]);
+  }
+
+  function remove(targetId) {
+    onChange?.((selectedIds || []).map(Number).filter(id => id !== Number(targetId)));
+  }
+
+  function selectFiltered() {
+    const next = new Set(selectedSet);
+    filteredTargets.forEach(target => next.add(Number(target.id)));
+    onChange?.([...next]);
+  }
+
+  function clearSelected() {
+    onChange?.([]);
+  }
+
+  if (!targets.length) return <p className="muted small">{emptyText}</p>;
+
+  return (
+    <div
+      className={open ? 'node-multiselect open' : 'node-multiselect'}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      }}
+    >
+      <button type="button" className="node-multiselect-trigger" onClick={() => setOpen(current => !current)}>
+        <span className="node-multiselect-summary">
+          {selectedTargets.length === 0 ? (
+            <span className="muted">{placeholder}</span>
+          ) : (
+            <>
+              {selectedTargets.slice(0, 2).map(target => <span key={target.id} className="node-select-chip">{target.name}</span>)}
+              {selectedTargets.length > 2 && <span className="node-select-count">+{selectedTargets.length - 2}개</span>}
+            </>
+          )}
+        </span>
+        <span className="node-multiselect-chevron">{open ? '▴' : '▾'}</span>
+      </button>
+
+      {open && (
+        <div className="node-multiselect-popover">
+          <div className="node-multiselect-selected-head">
+            <strong>선택됨 {selectedTargets.length}</strong>
+            {selectedTargets.length > 0 && <button type="button" className="ghost" onClick={clearSelected}>전체 해제</button>}
+          </div>
+
+          {selectedTargets.length > 0 && (
+            <div className="node-multiselect-selected">
+              {selectedTargets.slice(0, 6).map(target => (
+                <span key={target.id} className="node-select-chip removable" title={target.name}>
+                  {target.name}
+                  <button type="button" aria-label={`${target.name} 선택 해제`} onClick={() => remove(target.id)}>×</button>
+                </span>
+              ))}
+              {selectedTargets.length > 6 && <span className="node-select-count">+{selectedTargets.length - 6}개</span>}
+            </div>
+          )}
+
+          <div className="node-multiselect-search">
+            <Search size={14}/>
+            <input
+              autoFocus
+              value={query}
+              placeholder="노드 검색..."
+              onChange={event => setQuery(event.target.value)}
+            />
+          </div>
+
+          <div className="node-multiselect-tabs">
+            <button type="button" className={view === 'ALL' ? 'active' : ''} onClick={() => setView('ALL')}>전체</button>
+            <button type="button" className={view === 'SELECTED' ? 'active' : ''} onClick={() => setView('SELECTED')}>선택됨</button>
+            <button type="button" className={view === 'UNSELECTED' ? 'active' : ''} onClick={() => setView('UNSELECTED')}>미선택</button>
+          </div>
+
+          <div className="node-multiselect-list">
+            {filteredTargets.map(target => (
+              <label key={target.id} className="node-multiselect-option" title={target.description || target.name}>
+                <input type="checkbox" checked={selectedSet.has(Number(target.id))} onChange={() => toggle(target.id)} />
+                <span><strong>{target.name}</strong>{target.description && <small>{target.description}</small>}</span>
+              </label>
+            ))}
+            {!filteredTargets.length && <div className="node-multiselect-empty">조건에 맞는 노드가 없습니다.</div>}
+          </div>
+
+          <div className="node-multiselect-actions">
+            <button type="button" className="ghost" disabled={!filteredTargets.length} onClick={selectFiltered}>
+              {normalizedQuery ? '검색 결과 전체 선택' : '현재 목록 전체 선택'}
+            </button>
+            <button type="button" onClick={() => setOpen(false)}>완료</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }) {
+  const isMessage = kind === 'message';
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [targetId, setTargetId] = useState('');
+  const [query, setQuery] = useState('');
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState('');
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredItems = items.filter(item => {
+    const title = isMessage ? generatedNameOf(item) : item.name;
+    const detail = isMessage ? item.name : item.description;
+    return !normalizedQuery ||
+      String(title || '').toLowerCase().includes(normalizedQuery) ||
+      String(detail || '').toLowerCase().includes(normalizedQuery);
+  });
+  const selectedItems = items.filter(item => selectedIds.has(Number(item.id)));
+  const representative = items.find(item => Number(item.id) === Number(targetId)) || null;
+  const canPreview = selectedIds.size >= 2 && representative && selectedIds.has(Number(representative.id));
+  const endpointKind = isMessage ? 'messages' : 'targets';
+
+  function itemTitle(item) {
+    return isMessage ? generatedNameOf(item) : item.name;
+  }
+
+  function itemDetail(item) {
+    if (isMessage) {
+      const typeText = isEnumDefinition(item) ? 'Enum' : '메시지';
+      return `${typeText} · ${item.name || '용도 없음'}`;
+    }
+    return item.description || '설명 없음';
+  }
+
+  function toggleItem(itemId) {
+    const id = Number(itemId);
+    const next = new Set(selectedIds);
+    const wasSelected = next.has(id);
+    if (wasSelected) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+    if (wasSelected && Number(targetId) === id) setTargetId('');
+    if (!wasSelected && !targetId) setTargetId(String(id));
+    setPreview(null);
+    setLocalError('');
+  }
+
+  function chooseRepresentative(itemId) {
+    const id = Number(itemId);
+    if (!selectedIds.has(id)) return;
+    setTargetId(String(id));
+    setPreview(null);
+    setLocalError('');
+  }
+
+  function buildPayload() {
+    const representativeId = Number(targetId);
+    return {
+      target_id: representativeId,
+      source_ids: [...selectedIds].filter(id => Number(id) !== representativeId),
+    };
+  }
+
+  async function loadPreview() {
+    if (!canPreview) return;
+    setBusy(true);
+    setLocalError('');
+    try {
+      const result = await api.post(`/projects/${projectId}/merge/${endpointKind}/preview`, buildPayload());
+      setPreview(result);
+    } catch (error) {
+      setLocalError(error?.message || '머지 미리보기를 불러오지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyMerge() {
+    if (!preview || (preview.blockers || []).length > 0) return;
+    const representativeName = representative ? itemTitle(representative) : '';
+    if (!confirm(`선택한 ${selectedIds.size}개 항목을 '${representativeName}' 기준으로 머지할까요?\n\n머지된 원본 항목은 삭제됩니다.\n작업 직전 프로젝트 전체 상태가 자동 백업됩니다.`)) return;
+    setBusy(true);
+    setLocalError('');
+    try {
+      const result = await api.post(`/projects/${projectId}/merge/${endpointKind}/apply`, buildPayload());
+      await onMerged?.(result);
+      onClose?.();
+    } catch (error) {
+      setLocalError(error?.message || '머지를 실행하지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="merge-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose?.(); }}>
+      <div className="merge-modal card" role="dialog" aria-modal="true" aria-label={isMessage ? '메시지 머지' : '노드 머지'}>
+        <div className="merge-modal-head">
+          <div>
+            <p className="eyebrow">정리 도구</p>
+            <h3>{isMessage ? '메시지 머지' : '노드 머지'}</h3>
+            <p>{isMessage ? '같은 의미의 메시지를 하나의 대표 메시지로 합칩니다.' : '중복 노드를 하나의 대표 노드로 합치고 송수신 연결을 이동합니다.'}</p>
+          </div>
+          <button type="button" className="icon ghost-icon" aria-label="닫기" onClick={onClose}>×</button>
+        </div>
+
+        <div className="merge-search">
+          <Search size={15}/>
+          <input autoFocus value={query} placeholder={isMessage ? '메시지 이름/용도 검색...' : '노드 이름/설명 검색...'} onChange={event => setQuery(event.target.value)} />
+        </div>
+
+        <div className="merge-picker-head">
+          <strong>선택 {selectedIds.size}개</strong>
+          <span>체크 후 대표 항목을 지정하세요.</span>
+        </div>
+
+        <div className="merge-picker-list">
+          {filteredItems.map(item => {
+            const id = Number(item.id);
+            const selected = selectedIds.has(id);
+            const isTarget = Number(targetId) === id;
+            return (
+              <div key={item.id} className={`merge-picker-row ${selected ? 'selected' : ''} ${isTarget ? 'representative' : ''}`}>
+                <input type="checkbox" checked={selected} onChange={() => toggleItem(id)} />
+                <button type="button" className="merge-picker-main" onClick={() => toggleItem(id)}>
+                  <strong>{itemTitle(item)}</strong>
+                  <span>{itemDetail(item)}</span>
+                </button>
+                <label className={selected ? 'merge-representative-choice enabled' : 'merge-representative-choice'}>
+                  <input type="radio" name={`${kind}-merge-target`} checked={isTarget} disabled={!selected} onChange={() => chooseRepresentative(id)} />
+                  <span>대표</span>
+                </label>
+              </div>
+            );
+          })}
+          {!filteredItems.length && <div className="merge-empty">조건에 맞는 항목이 없습니다.</div>}
+        </div>
+
+        {localError && <div className="merge-error">{localError}</div>}
+
+        {preview && (
+          <div className="merge-preview">
+            <div className="merge-preview-title">
+              <strong>머지 미리보기</strong>
+              <span>{preview.target?.struct_name || preview.target?.name} 기준</span>
+            </div>
+
+            {!isMessage ? (
+              <>
+              <div className="merge-summary-grid">
+                <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
+                <div><span>송신 이동</span><strong>{preview.summary?.tx_move_count || 0}</strong></div>
+                <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
+                <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
+              </div>
+                {(preview.affected_messages || []).length > 0 && (
+                  <div className="merge-preview-list">
+                    <strong>송수신이 변경되는 메시지</strong>
+                    {(preview.affected_messages || []).slice(0, 12).map(message => (
+                      <span key={message.id}>{message.struct_name}{message.name ? ` · ${message.name}` : ''}</span>
+                    ))}
+                    {(preview.affected_messages || []).length > 12 && <em>외 {preview.affected_messages.length - 12}건</em>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="merge-summary-grid">
+                  <div><span>삭제될 메시지</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                  <div><span>프로토콜 추가</span><strong>{preview.summary?.protocol_add_count || 0}</strong></div>
+                  <div><span>송신 노드 추가</span><strong>{preview.summary?.tx_add_count || 0}</strong></div>
+                  <div><span>수신 노드 추가</span><strong>{preview.summary?.rx_add_count || 0}</strong></div>
+                  <div><span>필드 추가</span><strong>{preview.summary?.field_copy_count || preview.summary?.enum_copy_count || 0}</strong></div>
+                  <div><span>참조 변경</span><strong>{preview.summary?.reference_redirect_count || 0}</strong></div>
+                </div>
+
+                {preview.merged_protocol && (
+                  <div className="merge-preview-row"><span>최종 프로토콜</span><strong>{preview.merged_protocol}</strong></div>
+                )}
+
+                {(preview.field_actions || []).some(item => item.action === 'COPY') && (
+                  <div className="merge-preview-list">
+                    <strong>추가될 필드</strong>
+                    {(preview.field_actions || []).filter(item => item.action === 'COPY').slice(0, 12).map(item => (
+                      <span key={item.source_field_id}>{item.source_message}.{item.source_name} → <b>{item.target_name}</b></span>
+                    ))}
+                    {(preview.field_actions || []).filter(item => item.action === 'COPY').length > 12 && <em>외 {(preview.field_actions || []).filter(item => item.action === 'COPY').length - 12}건</em>}
+                  </div>
+                )}
+
+                {(preview.reference_redirects || []).length > 0 && (
+                  <div className="merge-preview-list">
+                    <strong>참조 변경 대상</strong>
+                    {(preview.reference_redirects || []).slice(0, 12).map(item => (
+                      <span key={item.field_id}>{item.owner_struct_name || item.message_id}.{item.field_name} → {preview.target?.struct_name}</span>
+                    ))}
+                    {(preview.reference_redirects || []).length > 12 && <em>외 {preview.reference_redirects.length - 12}건</em>}
+                  </div>
+                )}
+
+                {(preview.discarded_metadata || []).some(item => item.infocode || item.period) && (
+                  <div className="merge-warning">
+                    대표 메시지의 정보코드·주기를 유지합니다. 머지되는 메시지의 정보코드/주기는 제거됩니다.
+                  </div>
+                )}
+              </>
+            )}
+
+            {(preview.blockers || []).length > 0 && (
+              <div className="merge-blockers">
+                <strong>머지할 수 없는 항목이 있습니다.</strong>
+                {(preview.blockers || []).map((blocker, index) => <span key={index}>{blocker}</span>)}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="merge-auto-backup-note">머지 실행 직전에 복구 가능한 프로젝트 백업을 자동 생성합니다.</p>
+        <div className="merge-modal-actions">
+          <button type="button" className="ghost" onClick={onClose}>취소</button>
+          <button type="button" className="ghost" disabled={busy || !canPreview} onClick={loadPreview}>{busy ? '확인 중...' : '미리보기'}</button>
+          <button type="button" disabled={busy || !preview || (preview.blockers || []).length > 0} onClick={applyMerge}>머지 실행</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1886,6 +2548,9 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [notice, setNotice] = useState('');
   const [infocodeOverrides, setInfocodeOverrides] = useState({});
   const [conflictEditor, setConflictEditor] = useState(null);
+  const [fieldMode, setFieldMode] = useState('MERGE');
+  const [protocolMode, setProtocolMode] = useState('MERGE');
+  const [relationMode, setRelationMode] = useState('MERGE');
 
   const rows = preview?.messages || [];
   const visibleRows = changedOnly ? rows.filter(row => row.status !== 'SAME') : rows;
@@ -1904,7 +2569,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     return Object.prototype.hasOwnProperty.call(infocodeOverrides, structName);
   }
 
-  async function previewFile(nextFile, overrides = {}, preserveSelection = false) {
+  async function previewFile(nextFile, overrides = {}, preserveSelection = false, nextFieldMode = fieldMode, nextProtocolMode = protocolMode, nextRelationMode = relationMode) {
     if (!nextFile) return;
     setBusy(true);
     setNotice('');
@@ -1912,6 +2577,9 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
       const formData = new FormData();
       formData.append('file', nextFile);
       formData.append('infocode_overrides', JSON.stringify(overrides));
+      formData.append('field_mode', nextFieldMode);
+      formData.append('protocol_mode', nextProtocolMode);
+      formData.append('relation_mode', nextRelationMode);
       const result = await api.postForm(`/projects/${projectId}/partial-update/preview`, formData);
       setFile(nextFile);
       setPreview(result);
@@ -1990,6 +2658,21 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     await previewFile(file, next, true);
   }
 
+  async function changeFieldMode(nextMode) {
+    setFieldMode(nextMode);
+    if (file) await previewFile(file, infocodeOverrides, true, nextMode, protocolMode, relationMode);
+  }
+
+  async function changeProtocolMode(nextMode) {
+    setProtocolMode(nextMode);
+    if (file) await previewFile(file, infocodeOverrides, true, fieldMode, nextMode, relationMode);
+  }
+
+  async function changeRelationMode(nextMode) {
+    setRelationMode(nextMode);
+    if (file) await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, nextMode);
+  }
+
   async function applySelected() {
     if (!file || checkedRows.length === 0) return;
     if (selectedConflictCount > 0) {
@@ -1998,7 +2681,8 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     }
 
     const deleteText = selectedDeleteCount > 0 ? `\n삭제되는 항목 ${selectedDeleteCount}건이 포함되어 있습니다.` : '';
-    if (!confirm(`선택한 ${checkedRows.length}개 메시지를 현재 프로젝트에 반영할까요?${deleteText}\n\n체크하지 않은 메시지는 변경되지 않습니다.`)) return;
+    const modeText = `\n필드: ${fieldMode === 'MERGE' ? '기존 유지 + 추가(동명이면 _1, _2...)' : 'JSON 기준 교체'}\n프로토콜: ${protocolMode === 'MERGE' ? '기존 유지 + 추가' : 'JSON 기준 교체'}\n송수신: ${relationMode === 'MERGE' ? '기존 유지 + 추가' : 'JSON 기준 교체'}`;
+    if (!confirm(`선택한 ${checkedRows.length}개 메시지를 현재 프로젝트에 반영할까요?${deleteText}${modeText}\n\n체크하지 않은 메시지는 변경되지 않습니다.`)) return;
 
     setBusy(true);
     setNotice('');
@@ -2007,9 +2691,12 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
       formData.append('file', file);
       formData.append('selected_names', JSON.stringify(checkedRows.map(row => row.struct_name)));
       formData.append('infocode_overrides', JSON.stringify(infocodeOverrides));
+      formData.append('field_mode', fieldMode);
+      formData.append('protocol_mode', protocolMode);
+      formData.append('relation_mode', relationMode);
       const result = await api.postForm(`/projects/${projectId}/partial-update/apply`, formData);
       await onApplied?.();
-      await previewFile(file, infocodeOverrides, true);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
       setNotice(`${result.updated_count}개 메시지를 반영했습니다. 이력 관리에 부분 업데이트 기록이 저장되었습니다.`);
     } finally {
       setBusy(false);
@@ -2052,6 +2739,30 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
 
           <div className="partial-update-toolbar card">
             <label className="inline-check"><input type="checkbox" checked={changedOnly} onChange={e => setChangedOnly(e.target.checked)} /> 변경 항목만 보기</label>
+            <div className="partial-update-mode-controls">
+              <label>
+                <span>필드 반영</span>
+                <select value={fieldMode} disabled={busy} onChange={e => changeFieldMode(e.target.value)}>
+                  <option value="MERGE">기존 유지 + 추가</option>
+                  <option value="REPLACE">JSON 기준 교체</option>
+                </select>
+              </label>
+              <label>
+                <span>프로토콜 반영</span>
+                <select value={protocolMode} disabled={busy} onChange={e => changeProtocolMode(e.target.value)}>
+                  <option value="MERGE">기존 유지 + 추가</option>
+                  <option value="REPLACE">JSON 기준 교체</option>
+                </select>
+              </label>
+              <label>
+                <span>송수신 반영</span>
+                <select value={relationMode} disabled={busy} onChange={e => changeRelationMode(e.target.value)}>
+                  <option value="MERGE">기존 유지 + 추가</option>
+                  <option value="REPLACE">JSON 기준 교체</option>
+                </select>
+              </label>
+              <span className="partial-update-mode-hint">{fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
+            </div>
             <div className="button-row compact">
               <button type="button" className="ghost" onClick={() => selectByStatus('CHANGED')}>변경 전체 선택</button>
               <button type="button" className="ghost" onClick={() => selectByStatus('NEW')}>신규 전체 선택</button>
@@ -2214,12 +2925,13 @@ function ProjectSettingsPanel({ projectForm, setProjectForm, onSaveProject, onDe
   );
 }
 
-function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = null, labels = [], targets = [], onClose, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget }) {
+function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = null, api, projectId, labels = [], targets = [], onClose, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onMerged }) {
   const [tab, setTab] = useState(initialTab);
   const [nodeForm, setNodeForm] = useState({ name: '', description: '' });
   const [tagForm, setTagForm] = useState({ name: '', description: '' });
   const [editingNodeId, setEditingNodeId] = useState(null);
   const [editingTagId, setEditingTagId] = useState(null);
+  const [nodeMergeOpen, setNodeMergeOpen] = useState(false);
 
   function resetNodeForm() {
     setEditingNodeId(null);
@@ -2254,6 +2966,7 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
     setTab(initialTab || 'node');
     resetNodeForm();
     resetTagForm();
+    setNodeMergeOpen(false);
     if (initialTab === 'node' && initialEditTargetId != null) {
       const target = targets.find(item => Number(item.id) === Number(initialEditTargetId));
       if (target) beginEditNode(target);
@@ -2326,7 +3039,10 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
                 <button>{editingNodeId != null ? <Save size={14}/> : <Plus size={14}/>} {editingNodeId != null ? '저장' : '추가'}</button>
               </div>
             </form>
-            <div className="reference-drawer-list-head"><strong>등록된 노드</strong><span>더블클릭으로도 수정 패널을 열 수 있습니다.</span></div>
+            <div className="reference-drawer-list-head merge-enabled">
+              <div><strong>등록된 노드</strong><span>더블클릭으로도 수정 패널을 열 수 있습니다.</span></div>
+              <button type="button" className="ghost small-button" disabled={targets.length < 2} onClick={() => setNodeMergeOpen(true)}><Layers size={13}/> 노드 머지</button>
+            </div>
             <div className="reference-drawer-list">
               {targets.map(target => (
                 <div key={target.id} className={Number(editingNodeId) === Number(target.id) ? 'reference-drawer-item editing' : 'reference-drawer-item'}>
@@ -2365,6 +3081,20 @@ function ReferenceSidePanel({ open, initialTab = 'node', initialEditTargetId = n
           </>
         )}
       </aside>
+      {nodeMergeOpen && (
+        <MergeToolDialog
+          kind="target"
+          api={api}
+          projectId={projectId}
+          items={targets}
+          onClose={() => setNodeMergeOpen(false)}
+          onMerged={async result => {
+            setNodeMergeOpen(false);
+            resetNodeForm();
+            await onMerged?.(result);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -2414,6 +3144,12 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
   }, [integrationTargets.map(item => item.id).join(',')]);
 
   useEffect(() => () => onDirtyChange?.(false), []);
+
+  function swapMessageTargets() {
+    const currentTx = [...txTargetIds];
+    setTxTargetIds([...rxTargetIds]);
+    setRxTargetIds(currentTx);
+  }
 
   async function saveMessage(e) {
     e.preventDefault();
@@ -2494,8 +3230,18 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
           <label>프로토콜<ProtocolEditor value={messageForm.protocol || ''} onChange={protocol => setMessageForm({ ...messageForm, protocol })} suggestions={protocolSuggestions} /></label>
           <label>설명<input value={messageForm.description} {...overflowInputHandlers(messageForm.description)} onChange={e => setMessageForm({ ...messageForm, description: e.target.value })} /></label>
           <div className="form-wide"><div className="reference-inline-label">태그<button type="button" className="reference-inline-add" title="태그 추가/관리" onClick={() => onOpenReferencePanel?.('tag')}><Plus size={12}/></button></div><LabelCheckboxes labels={labels} selectedIds={labelIds} onChange={setLabelIds} /></div>
-          <div className="form-wide"><div className="reference-inline-label">송신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div><LabelCheckboxes labels={integrationTargets} emptyText="등록된 노드가 없습니다." selectedIds={txTargetIds} onChange={setTxTargetIds} /></div>
-          <div className="form-wide"><div className="reference-inline-label">수신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div><LabelCheckboxes labels={integrationTargets} emptyText="등록된 노드가 없습니다." selectedIds={rxTargetIds} onChange={setRxTargetIds} /></div>
+          <div className="form-wide node-selection-row">
+            <div className="reference-inline-label">송신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div>
+            <NodeMultiSelect targets={integrationTargets} selectedIds={txTargetIds} onChange={setTxTargetIds} placeholder="송신 노드 선택" />
+          </div>
+          <div className="form-wide node-target-swap-row">
+            <span />
+            <button type="button" className="ghost node-target-swap" title="송신 노드와 수신 노드를 서로 바꿉니다." onClick={swapMessageTargets}><RefreshCw size={13}/> 송신 ↔ 수신 바꾸기</button>
+          </div>
+          <div className="form-wide node-selection-row">
+            <div className="reference-inline-label">수신 노드<button type="button" className="reference-inline-add" title="노드 추가/관리" onClick={() => onOpenReferencePanel?.('node')}><Plus size={12}/></button></div>
+            <NodeMultiSelect targets={integrationTargets} selectedIds={rxTargetIds} onChange={setRxTargetIds} placeholder="수신 노드 선택" />
+          </div>
           <button><Save size={16}/> 메시지 저장</button>
         </form>
       </div>
@@ -3131,6 +3877,8 @@ const MESSAGE_HISTORY_LABELS = {
 
 function getHistoryActionLabel(history) {
   if (history?.after_json?.partial_update) return '부분 업데이트';
+  if (history?.after_json?.target_merge) return '노드 머지';
+  if (history?.after_json?.message_merge) return '메시지 머지';
   return HISTORY_ACTION_LABELS[String(history?.change_type || '')] || String(history?.change_type || '-');
 }
 
@@ -3244,6 +3992,35 @@ function buildHistoryDetailLines(history) {
     return [`메시지 삭제: ${valueText(before?.name)}`];
   }
   if (type === 'UPDATE') {
+    const targetMerge = after?.target_merge;
+    if (targetMerge) {
+      const lines = [
+        `대표 노드: ${valueText(targetMerge.target?.name)}`,
+        `삭제된 중복 노드: ${valueText(targetMerge.summary?.removed_source_count)}개`,
+        `송신 연결 이동: ${valueText(targetMerge.summary?.moved_tx)}건`,
+        `수신 연결 이동: ${valueText(targetMerge.summary?.moved_rx)}건`,
+        `중복 연결 정리: ${valueText(targetMerge.summary?.removed_duplicate_links)}건`,
+      ];
+      return lines;
+    }
+
+    const messageMerge = after?.message_merge;
+    if (messageMerge) {
+      const summary = messageMerge.summary || {};
+      const lines = [
+        `대표 메시지: ${valueText(messageMerge.target?.struct_name)}${messageMerge.target?.name ? ` (${messageMerge.target.name})` : ''}`,
+        `삭제된 중복 메시지: ${(messageMerge.removed_sources || []).length}개`,
+        `프로토콜: ${valueText(messageMerge.merged_protocol)}`,
+        `필드 추가: ${valueText(summary.field_copy_count || summary.enum_copy_count || 0)}개`,
+        `송신 노드 추가: ${valueText(summary.tx_add_count || 0)}개 / 수신 노드 추가: ${valueText(summary.rx_add_count || 0)}개`,
+        `참조 메시지 변경: ${valueText(summary.reference_redirect_count || 0)}건`,
+      ];
+      (messageMerge.field_actions || []).filter(item => item.action === 'COPY').slice(0, 8).forEach(item => {
+        lines.push(`필드 병합: ${item.source_message}.${item.source_name} → ${item.target_name}`);
+      });
+      return lines;
+    }
+
     const partial = after?.partial_update;
     if (partial) {
       const lines = [`파일: ${valueText(partial.filename)}`, `적용 메시지: ${valueText(partial.message_count)}개`];
@@ -3464,7 +4241,7 @@ function HistoryPanel({ api, projectId, history, backups, backupEvents, onReload
                 {backups.map(backup => (
                   <tr key={backup.id}>
                     <td>{formatDate(backup.created_at)}</td>
-                    <td>{backup.kind === 'AUTO_BEFORE_RESTORE' ? '복원 전 자동 백업' : '사용자 백업'}</td>
+                    <td>{backup.kind === 'AUTO_BEFORE_RESTORE' ? '복원 전 자동 백업' : backup.kind === 'AUTO_BEFORE_MERGE' ? '머지 전 자동 백업' : '사용자 백업'}</td>
                     <td className="backup-note-cell" title={backup.note || ''}>{backup.note || '-'}</td>
                     <td>{backup.created_by_name || backup.created_by || '-'}</td>
                     <td>{backup.message_count}</td>
