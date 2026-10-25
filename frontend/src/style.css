@@ -1067,7 +1067,8 @@ body.design-resizing * { cursor: row-resize !important; }
 .design-message-nav.active .design-message-nav-main small { color: #60a5fa; }
 .design-message-pane-empty { padding: 18px 7px; color: #94a3b8; font-size: 11px; line-height: 1.45; text-align: center; }
 
-.message-centered-upper .design-message-pane { border-right: 0; }
+.message-centered-upper .design-message-pane,
+.node-centered-upper .design-device-pane { border-right: 0; }
 .design-message-pane-resizer {
   min-width: 7px;
   min-height: 0;
@@ -1075,6 +1076,7 @@ body.design-resizing * { cursor: row-resize !important; }
   align-items: stretch;
   justify-content: center;
   cursor: col-resize;
+  touch-action: none;
   background: #eef2f7;
   border-left: 1px solid #dbe3ee;
   border-right: 1px solid #dbe3ee;
