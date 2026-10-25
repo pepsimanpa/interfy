@@ -2553,6 +2553,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [relationMode, setRelationMode] = useState('MERGE');
   const [nodePreview, setNodePreview] = useState(null);
   const [partnerDeletePreview, setPartnerDeletePreview] = useState(null);
+  const [partnerRenamePreview, setPartnerRenamePreview] = useState(null);
   const [partnerPackage, setPartnerPackage] = useState(false);
 
   const rows = preview?.messages || [];
@@ -2609,6 +2610,14 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     return result;
   }
 
+  async function previewPartnerRenames(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/messages/rename-preview`, formData);
+    setPartnerRenamePreview(result);
+    return result;
+  }
+
   async function previewPartnerDeletions(nextFile) {
     const formData = new FormData();
     formData.append('file', nextFile);
@@ -2626,6 +2635,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     setConflictEditor(null);
     setNodePreview(null);
     setPartnerDeletePreview(null);
+    setPartnerRenamePreview(null);
     setPartnerPackage(false);
     let isPartner = false;
     try {
@@ -2644,9 +2654,31 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
       if (isPartner) {
         await previewPartnerNodes(nextFile);
         await previewPartnerDeletions(nextFile);
+        await previewPartnerRenames(nextFile);
       }
     } catch (error) {
       setNotice(`파일 미리보기 실패: ${error?.message || error}`);
+    }
+  }
+
+  async function applyPartnerRenames() {
+    if (!file || !partnerRenamePreview || !(partnerRenamePreview.message_renames || []).length || (partnerRenamePreview.blockers || []).length) return;
+    const names = (partnerRenamePreview.message_renames || []).map(item => `${item.before_name} → ${item.name}`);
+    if (!confirm(`메시지/Enum 구조체명 ${names.length}건을 변경할까요?\n\n${names.join('\n')}\n\n참조 필드의 자료형 이름도 갱신되며, 변경 전 자동 백업됩니다.`)) return;
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/messages/rename-apply`, formData);
+      await onApplied?.();
+      await previewPartnerRenames(file);
+      await previewPartnerDeletions(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`메시지/Enum 이름 ${result.renamed_count}건을 변경했습니다.`);
+    } catch (error) {
+      setNotice(`메시지 이름 변경 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -2871,6 +2903,21 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
               <div className="button-row compact">
                 <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerDeletions(file)}>삭제 후보 다시 확인</button>
                 <button type="button" className="danger" disabled={busy || !(partnerDeletePreview.message_deletions || []).length || (partnerDeletePreview.blockers || []).length > 0} onClick={applyPartnerDeletions}>선택된 삭제 후보 일괄 삭제</button>
+              </div>
+            </div>
+          )}
+
+          {partnerPackage && partnerRenamePreview && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 메시지/Enum 이름 변경</h3><p>기존 메시지의 구조체명을 바꾼 경우 ID와 참조를 유지하며 이름만 변경합니다. 이 단계를 메시지 필드 반영보다 먼저 실행하세요.</p></div>
+              </div>
+              <div className="partner-node-summary"><span>이름 변경 {(partnerRenamePreview.message_renames || []).length}건</span></div>
+              {(partnerRenamePreview.message_renames || []).map((item, index) => <p className="muted small" key={index}>{item.before_name} → {item.name}</p>)}
+              {(partnerRenamePreview.blockers || []).map((item, index) => <p key={index} className="partner-node-error">{item}</p>)}
+              <div className="button-row compact">
+                <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerRenames(file)}>이름 변경 다시 확인</button>
+                <button type="button" disabled={busy || !(partnerRenamePreview.message_renames || []).length || (partnerRenamePreview.blockers || []).length > 0} onClick={applyPartnerRenames}>메시지 이름 변경 반영</button>
               </div>
             </div>
           )}
