@@ -1,4 +1,5 @@
 from io import BytesIO
+import unittest
 from types import SimpleNamespace
 
 from docx import Document
@@ -35,51 +36,52 @@ def document_text(doc):
     )
 
 
-def test_idd_docx_produces_editable_tables_with_saved_data():
-    project = SimpleNamespace(name="CSU 연동")
-    messages = [
-        message(1, "항법정보", tx=("CSU",), rx=("AUV",), protocol="UDP, DDS",
-                fields=[field("latitude", size=4, unit="deg",
-                              value_range="-90~90", description="위도")],
-                size_bytes=4),
-        message(2, "임무명령", tx=("CSU",), rx=("AUV",), protocol="DDS",
-                fields=[field("command")], order_index=2),
-    ]
-    content = render_idd_docx(project, messages)
-    assert content[:2] == b"PK"
-    doc = Document(BytesIO(content))
-    text = document_text(doc)
-    for value in ["3.1 인터페이스간 연동 개념", "3.2 인터페이스간 연동 설계",
-                  "CSU", "AUV", "항법정보", "임무명령", "latitude",
-                  "deg", "-90~90", "위도", "100 ms", "4 Byte", "UDP", "DDS",
-                  "사용자 인터페이스 목록", "통신방법", "프로토콜"]:
-        assert value in text
-    assert doc.tables
+class IddDocxTests(unittest.TestCase):
+    def test_idd_docx_produces_editable_tables_with_saved_data(self):
+        project = SimpleNamespace(name="CSU 연동")
+        messages = [
+            message(1, "항법정보", tx=("CSU",), rx=("AUV",), protocol="UDP, DDS",
+                    fields=[field("latitude", size=4, unit="deg",
+                                  value_range="-90~90", description="위도")],
+                    size_bytes=4),
+            message(2, "임무명령", tx=("CSU",), rx=("AUV",), protocol="DDS",
+                    fields=[field("command")], order_index=2),
+        ]
+        content = render_idd_docx(project, messages)
+        assert content[:2] == b"PK"
+        doc = Document(BytesIO(content))
+        text = document_text(doc)
+        for value in ["3.1 인터페이스간 연동 개념", "3.2 인터페이스간 연동 설계",
+                      "CSU", "AUV", "항법정보", "임무명령", "latitude",
+                      "deg", "-90~90", "위도", "100 ms", "4 Byte", "UDP", "DDS",
+                      "사용자 인터페이스 목록", "통신방법", "프로토콜"]:
+            assert value in text
+        assert doc.tables
 
 
-def test_idd_does_not_infer_missing_transport_details_or_pairwise_edges():
-    project = SimpleNamespace(name="TEST")
-    messages = [
-        message(1, "A", tx=("CSU", "MDV"), rx=("AUV",), protocol="", fields=[]),
-        message(2, "Only enum", definition_type="ENUM"),
-    ]
-    doc = Document(BytesIO(render_idd_docx(project, messages)))
-    text = document_text(doc)
-    assert "Only enum" not in text
-    assert "CSU, MDV" in text
-    # A two-sender relationship is preserved as a single source set.
-    relation_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "송신 CSCI")
-    assert len(relation_table.rows) == 2
-    # Unknown communication fields stay blank, rather than fabricated.
-    comm_table = next(
-        table for table in doc.tables
-        if table.rows[1].cells[0].text == "통신 구분명(식별자)"
-    )
-    assert comm_table.rows[1].cells[1].text == ""
-    assert "3a" not in text
+    def test_idd_does_not_infer_missing_transport_details_or_pairwise_edges(self):
+        project = SimpleNamespace(name="TEST")
+        messages = [
+            message(1, "A", tx=("CSU", "MDV"), rx=("AUV",), protocol="", fields=[]),
+            message(2, "Only enum", definition_type="ENUM"),
+        ]
+        doc = Document(BytesIO(render_idd_docx(project, messages)))
+        text = document_text(doc)
+        assert "Only enum" not in text
+        assert "CSU, MDV" in text
+        # A two-sender relationship is preserved as a single source set.
+        relation_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "송신 CSCI")
+        assert len(relation_table.rows) == 2
+        # Unknown communication fields stay blank, rather than fabricated.
+        comm_table = next(
+            table for table in doc.tables
+            if table.rows[1].cells[0].text == "통신 구분명(식별자)"
+        )
+        assert comm_table.rows[1].cells[1].text == ""
+        assert "3a" not in text
 
 
-def test_idd_generates_template_when_project_is_empty():
-    doc = Document(BytesIO(render_idd_docx(SimpleNamespace(name="Empty"), [])))
-    assert doc.tables
-    assert "등록된 메시지가 없습니다." in document_text(doc)
+    def test_idd_generates_template_when_project_is_empty(self):
+        doc = Document(BytesIO(render_idd_docx(SimpleNamespace(name="Empty"), [])))
+        assert doc.tables
+        assert "등록된 메시지가 없습니다." in document_text(doc)
