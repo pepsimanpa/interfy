@@ -1364,7 +1364,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
             <MessageNameSearch value={messageNameQuery} onChange={setMessageNameQuery} />
             <div className="button-row compact">
               {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
-            <button type="button" className="ghost" disabled={messages.length < 2} onClick={() => setMessageMergeOpen(true)}><Layers size={14}/> 메시지 머지</button>
+              <button type="button" className="ghost" disabled={messages.length < 2} onClick={() => setMessageMergeOpen(true)}><Layers size={14}/> 메시지 머지</button>
               <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
             </div>
           </div>
