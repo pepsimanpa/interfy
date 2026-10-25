@@ -8,7 +8,7 @@ from .database import Base, engine, SessionLocal
 from .models import User, UserRole, Project, Message, MessageField
 from .auth import hash_password
 from .schemas import SUPPORTED_TYPES
-from .routers import auth, projects, messages, groups, export, history, backups, project_json, partial_update, labels, integration_targets, merge_tools
+from .routers import auth, projects, messages, groups, export, history, backups, project_json, partial_update, labels, integration_targets, merge_tools, collaboration
 
 app = FastAPI(title="Interfy", version="0.1.0")
 
@@ -265,3 +265,4 @@ app.include_router(partial_update.router)
 app.include_router(labels.router)
 app.include_router(integration_targets.router)
 app.include_router(merge_tools.router)
+app.include_router(collaboration.router)

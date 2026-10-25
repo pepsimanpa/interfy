@@ -772,7 +772,7 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
             me={me}
           />
         )}
-        {activePanel === 'groups' && <ExportPanel api={api} project={project} labels={labels} integrationTargets={integrationTargets} />}
+        {activePanel === 'groups' && <ExportPanel api={api} project={project} labels={labels} integrationTargets={integrationTargets} onOpenPartialUpdate={() => changePanel('partialUpdate')} />}
         {activePanel === 'history' && <HistoryPanel api={api} projectId={projectId} history={history} backups={backups} backupEvents={backupEvents} onReload={async () => { await Promise.all([loadHistory(), loadBackups(), loadBackupEvents()]); }} onRestored={refreshAll} />}
         {activePanel === 'account' && <AccountPanel api={api} me={me} onLogout={onLogout} />}
       </main>
@@ -2551,6 +2551,10 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [fieldMode, setFieldMode] = useState('MERGE');
   const [protocolMode, setProtocolMode] = useState('MERGE');
   const [relationMode, setRelationMode] = useState('MERGE');
+  const [nodePreview, setNodePreview] = useState(null);
+  const [partnerDeletePreview, setPartnerDeletePreview] = useState(null);
+  const [partnerRenamePreview, setPartnerRenamePreview] = useState(null);
+  const [partnerPackage, setPartnerPackage] = useState(false);
 
   const rows = preview?.messages || [];
   const visibleRows = changedOnly ? rows.filter(row => row.status !== 'SAME') : rows;
@@ -2598,6 +2602,30 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     }
   }
 
+  async function previewPartnerNodes(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/nodes/preview`, formData);
+    setNodePreview(result);
+    return result;
+  }
+
+  async function previewPartnerRenames(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/messages/rename-preview`, formData);
+    setPartnerRenamePreview(result);
+    return result;
+  }
+
+  async function previewPartnerDeletions(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/messages/delete-preview`, formData);
+    setPartnerDeletePreview(result);
+    return result;
+  }
+
   async function chooseFile(event) {
     const nextFile = event.target.files?.[0];
     event.target.value = '';
@@ -2605,7 +2633,99 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
 
     setInfocodeOverrides({});
     setConflictEditor(null);
-    await previewFile(nextFile, {}, false);
+    setNodePreview(null);
+    setPartnerDeletePreview(null);
+    setPartnerRenamePreview(null);
+    setPartnerPackage(false);
+    let isPartner = false;
+    try {
+      const parsed = JSON.parse(await nextFile.text());
+      isPartner = parsed?.collaboration?.format === 'interfy-partner-v1';
+    } catch (_) {
+      // Let the server return the exact JSON validation error.
+    }
+    setPartnerPackage(isPartner);
+    const nextMode = isPartner ? 'REPLACE' : 'MERGE';
+    setFieldMode(nextMode);
+    setProtocolMode(nextMode);
+    setRelationMode(nextMode);
+    try {
+      await previewFile(nextFile, {}, false, nextMode, nextMode, nextMode);
+      if (isPartner) {
+        await previewPartnerNodes(nextFile);
+        await previewPartnerDeletions(nextFile);
+        await previewPartnerRenames(nextFile);
+      }
+    } catch (error) {
+      setNotice(`파일 미리보기 실패: ${error?.message || error}`);
+    }
+  }
+
+  async function applyPartnerRenames() {
+    if (!file || !partnerRenamePreview || !(partnerRenamePreview.message_renames || []).length || (partnerRenamePreview.blockers || []).length) return;
+    const names = (partnerRenamePreview.message_renames || []).map(item => `${item.before_name} → ${item.name}`);
+    if (!confirm(`메시지/Enum 구조체명 ${names.length}건을 변경할까요?\n\n${names.join('\n')}\n\n참조 필드의 자료형 이름도 갱신되며, 변경 전 자동 백업됩니다.`)) return;
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/messages/rename-apply`, formData);
+      await onApplied?.();
+      await previewPartnerRenames(file);
+      await previewPartnerDeletions(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`메시지/Enum 이름 ${result.renamed_count}건을 변경했습니다.`);
+    } catch (error) {
+      setNotice(`메시지 이름 변경 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyPartnerDeletions() {
+    if (!file || !partnerDeletePreview || !(partnerDeletePreview.message_deletions || []).length || (partnerDeletePreview.blockers || []).length) return;
+    const names = (partnerDeletePreview.message_deletions || []).map(item => item.struct_name);
+    if (!confirm(`협력사가 삭제한 메시지 ${names.length}개를 실제 프로젝트에서도 삭제할까요?\n\n${names.join(', ')}\n\n관련 필드/관계가 삭제됩니다. 적용 직전 전체 프로젝트가 자동 백업됩니다.`)) return;
+
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/messages/delete-apply`, formData);
+      await onApplied?.();
+      await previewPartnerDeletions(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`협력사 메시지 ${result.deleted_count}개를 삭제했습니다. 다른 변경 항목은 별도로 반영할 수 있습니다.`);
+    } catch (error) {
+      setNotice(`메시지 삭제 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyPartnerNodes() {
+    if (!file || !nodePreview || !(nodePreview.node_actions || []).length || (nodePreview.blockers || []).length) return;
+    const deletes = (nodePreview.node_actions || []).filter(action => action.action === 'DELETE');
+    const message = `협력사 작업 패키지의 노드 변경 ${nodePreview.node_actions.length}건을 반영할까요?` +
+      (deletes.length ? `\n삭제 노드 ${deletes.length}건의 기존 송수신 관계가 제거됩니다.` : '') +
+      '\n반영 직전 전체 프로젝트를 자동 백업합니다.';
+    if (!confirm(message)) return;
+
+    setBusy(true);
+    setNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/nodes/apply`, formData);
+      await onApplied?.();
+      await previewPartnerNodes(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`노드 변경 ${result.updated_count}건을 반영했습니다. 나머지 메시지 변경도 미리보기에서 선택해 반영할 수 있습니다.`);
+    } catch (error) {
+      setNotice(`노드 적용 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function toggleChecked(row) {
@@ -2737,6 +2857,71 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
             <div><span>선택</span><strong>{checkedRows.length}</strong></div>
           </div>
 
+          {partnerPackage && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 노드 변경</h3><p>노드 이름·설명 변경, 신규 및 삭제를 메시지와 별도로 검토합니다. 이름 변경 시 기존 메시지의 송수신 연결은 유지됩니다.</p></div>
+              </div>
+              {!nodePreview ? <p className="muted small">노드 변경 미리보기를 불러오는 중이거나 조회하지 못했습니다.</p> : (
+                <>
+                  <div className="partner-node-summary">
+                    <span>신규 {nodePreview.summary?.added || 0}</span>
+                    <span>수정 {nodePreview.summary?.updated || 0}</span>
+                    <span>삭제 {nodePreview.summary?.deleted || 0}</span>
+                  </div>
+                  {(nodePreview.node_actions || []).length > 0 && (
+                    <div className="partner-node-action-list">
+                      {nodePreview.node_actions.map((item, index) => (
+                        <div key={index}>
+                          <strong>{item.action === 'ADD' ? '신규' : item.action === 'UPDATE' ? '수정' : '삭제'}</strong>
+                          <span>{item.before_name && item.before_name !== item.name ? `${item.before_name} → ${item.name}` : item.name}</span>
+                          {item.action === 'DELETE' && <em>송신 {item.tx_count || 0} · 수신 {item.rx_count || 0} 연결 해제</em>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(nodePreview.blockers || []).map((item, index) => <p className="partner-node-error" key={index}>{item}</p>)}
+                  <div className="button-row compact">
+                    <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerNodes(file)}>노드 변경 다시 확인</button>
+                    <button type="button" disabled={busy || !(nodePreview.node_actions || []).length || (nodePreview.blockers || []).length > 0} onClick={applyPartnerNodes}>노드 변경 반영</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {partnerPackage && partnerDeletePreview && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 삭제된 메시지</h3><p>협력사 JSON에서 없어진 메시지만 별도로 검토하고 삭제를 승인할 수 있습니다. 다른 메시지가 참조 중이면 삭제를 차단합니다.</p></div>
+              </div>
+              <div className="partner-node-summary"><span>삭제 후보 {(partnerDeletePreview.message_deletions || []).length}개</span></div>
+              {(partnerDeletePreview.message_deletions || []).map((item, index) => (
+                <p className="muted small" key={index}>{item.struct_name} · 참조 {item.reference_count || 0}건</p>
+              ))}
+              {(partnerDeletePreview.blockers || []).map((text, index) => <p className="partner-node-error" key={index}>{text}</p>)}
+              <div className="button-row compact">
+                <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerDeletions(file)}>삭제 후보 다시 확인</button>
+                <button type="button" className="danger" disabled={busy || !(partnerDeletePreview.message_deletions || []).length || (partnerDeletePreview.blockers || []).length > 0} onClick={applyPartnerDeletions}>선택된 삭제 후보 일괄 삭제</button>
+              </div>
+            </div>
+          )}
+
+          {partnerPackage && partnerRenamePreview && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 메시지/Enum 이름 변경</h3><p>기존 메시지의 구조체명을 바꾼 경우 ID와 참조를 유지하며 이름만 변경합니다. 이 단계를 메시지 필드 반영보다 먼저 실행하세요.</p></div>
+              </div>
+              <div className="partner-node-summary"><span>이름 변경 {(partnerRenamePreview.message_renames || []).length}건</span></div>
+              {(partnerRenamePreview.message_renames || []).map((item, index) => <p className="muted small" key={index}>{item.before_name} → {item.name}</p>)}
+              {(partnerRenamePreview.blockers || []).map((item, index) => <p key={index} className="partner-node-error">{item}</p>)}
+              <div className="button-row compact">
+                <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerRenames(file)}>이름 변경 다시 확인</button>
+                <button type="button" disabled={busy || !(partnerRenamePreview.message_renames || []).length || (partnerRenamePreview.blockers || []).length > 0} onClick={applyPartnerRenames}>메시지 이름 변경 반영</button>
+              </div>
+            </div>
+          )}
+
           <div className="partial-update-toolbar card">
             <label className="inline-check"><input type="checkbox" checked={changedOnly} onChange={e => setChangedOnly(e.target.checked)} /> 변경 항목만 보기</label>
             <div className="partial-update-mode-controls">
@@ -2761,7 +2946,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
                   <option value="REPLACE">JSON 기준 교체</option>
                 </select>
               </label>
-              <span className="partial-update-mode-hint">{fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
+              <span className="partial-update-mode-hint">{partnerPackage ? '협력사 수정본은 교체 모드로 초기 선택됩니다. 메시지 변경은 아래에서 별도 승인하세요.' : fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
             </div>
             <div className="button-row compact">
               <button type="button" className="ghost" onClick={() => selectByStatus('CHANGED')}>변경 전체 선택</button>
@@ -4072,7 +4257,10 @@ function HistoryDetail({ history }) {
   );
 }
 
-function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
+function ExportPanel({ api, project, labels = [], integrationTargets = [], onOpenPartialUpdate }) {
+  const [partnerTargetIds, setPartnerTargetIds] = useState([]);
+  const [partnerBusy, setPartnerBusy] = useState(false);
+  const [partnerNotice, setPartnerNotice] = useState('');
   const [selectedLabelId, setSelectedLabelId] = useState(labels[0]?.id ? String(labels[0].id) : '');
   const [selectedTargetId, setSelectedTargetId] = useState(integrationTargets[0]?.id ? String(integrationTargets[0].id) : '');
   const [targetDirection, setTargetDirection] = useState('tx');
@@ -4115,6 +4303,40 @@ function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadPartnerJson() {
+    if (!partnerTargetIds.length || partnerBusy) return;
+    setPartnerBusy(true);
+    setPartnerNotice('');
+    try {
+      const response = await fetch(`${API_BASE}/projects/${project.id}/collaboration/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ target_ids: partnerTargetIds }),
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`HTTP ${response.status}: ${error}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${project.acronym || project.name || 'interfy'}-partner-package.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setPartnerNotice(`선택한 ${partnerTargetIds.length}개 노드의 작업 패키지를 저장했습니다.`);
+    } catch (error) {
+      setPartnerNotice(`내보내기 실패: ${error?.message || error}`);
+    } finally {
+      setPartnerBusy(false);
+    }
+  }
+
   const selectedLabel = labels.find(label => String(label.id) === String(selectedLabelId));
   const selectedTarget = integrationTargets.find(target => String(target.id) === String(selectedTargetId));
   const targetDirectionText = targetDirection === 'rx' ? '수신 노드' : targetDirection === 'all' ? '송수신 전체' : '송신 노드';
@@ -4130,6 +4352,38 @@ function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
           <button onClick={() => downloadExport(`/projects/${project.id}/export/csharp`, `${project.acronym || project.name}.cs`)}><Download size={16}/> 프로젝트 전체 .cs</button>
           <button onClick={() => downloadExport(`/projects/${project.id}/project-json`, `${project.acronym || project.name}.json`)}><Download size={16}/> 프로젝트 JSON</button>
         </div>
+      </div>
+
+      <div className="card span-3">
+        <div className="card-title">
+          <div>
+            <h2>협력사 오프라인 작업 패키지</h2>
+            <p>담당 노드를 여러 개 선택해 관련 송수신 메시지와 참조 STRUCT/ENUM을 JSON으로 내보냅니다. 협력사는 HTML 편집기에서 수정하고 JSON을 회신합니다.</p>
+          </div>
+        </div>
+        <div className="partner-export-targets">
+          {integrationTargets.map(target => (
+            <label key={target.id} className="partner-export-target">
+              <input type="checkbox" checked={partnerTargetIds.includes(target.id)} onChange={event => {
+                const id = target.id;
+                setPartnerTargetIds(prev => event.target.checked ? [...prev, id] : prev.filter(value => value !== id));
+              }} />
+              <span>{target.name}</span>
+            </label>
+          ))}
+          {!integrationTargets.length && <p className="muted small">먼저 인터페이스 설계에서 노드를 등록하세요.</p>}
+        </div>
+        <div className="button-row partner-export-actions">
+          <button type="button" className="ghost" onClick={() => setPartnerTargetIds(integrationTargets.map(target => target.id))}>전체 선택</button>
+          <button type="button" className="ghost" onClick={() => setPartnerTargetIds([])}>선택 해제</button>
+          <button type="button" disabled={!partnerTargetIds.length || partnerBusy} onClick={downloadPartnerJson}>
+            <Download size={16}/> {partnerBusy ? '생성 중...' : `선택한 ${partnerTargetIds.length}개 노드 JSON 내보내기`}
+          </button>
+          <a className="partner-export-download" href="/Interfy-Partner-Editor.html" download="Interfy-Partner-Editor.html"><Download size={16}/> 오프라인 HTML 편집기</a>
+          <button type="button" className="ghost" onClick={onOpenPartialUpdate}><Upload size={16}/> 수정 JSON 부분 업데이트</button>
+        </div>
+        <p className="muted small">HTML은 모든 업체에 공통으로 전달하고 JSON만 선택한 노드 기준으로 나눠 주세요. 기존 부분 업데이트의 필드·프로토콜·송수신 반영 방식을 선택해 적용할 수 있습니다.</p>
+        {partnerNotice && <p className="partner-export-notice">{partnerNotice}</p>}
       </div>
 
       <div className="card span-3">

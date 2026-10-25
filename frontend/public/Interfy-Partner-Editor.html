@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+<title>Interfy Partner Editor</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;color-scheme:dark;background:#18191b;color:#ddd;font-size:13px}
+*{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}
+button{border:1px solid #414449;border-radius:6px;background:#33363a;color:#eee;padding:7px 11px;cursor:pointer}
+button:hover{background:#42454b}button:disabled{opacity:.45;cursor:default}button.primary{background:#355a7a;border-color:#50799e}
+button.danger{color:#ffafa7}button.small{padding:3px 7px;font-size:12px}
+input,textarea,select{width:100%;padding:7px 9px;min-width:0;border:1px solid #45484d;border-radius:5px;background:#232529;color:#eee}
+input[type=checkbox]{width:auto}textarea{min-height:60px;resize:vertical}h1,h2,h3,p{margin:0}
+header{display:flex;align-items:center;gap:13px;padding:12px 16px;border-bottom:1px solid #36383b;background:#212225}
+header h1{font-size:17px;letter-spacing:-.3px}header .brand{display:grid;gap:3px;min-width:185px}header small{font-size:10px;color:#aaa}
+header .actions{display:flex;gap:7px;margin-left:auto;align-items:center;flex-wrap:wrap}
+.notice{padding:8px 14px;border-bottom:1px solid #35383a;color:#aaa;font-size:11px}
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);height:calc(100vh - 113px);min-height:420px}
+aside{border-right:1px solid #383a3d;display:flex;flex-direction:column;min-height:0}
+nav{display:flex;border-bottom:1px solid #383a3d}nav button{flex:1;border:0;border-radius:0;background:transparent;padding:11px}
+nav button.active{background:#313943;border-bottom:2px solid #82b0d7}
+.sidebar-tools{display:grid;grid-template-columns:1fr auto;gap:7px;padding:10px}
+.list{overflow:auto;flex:1} .list-item{display:block;border:0;border-bottom:1px solid #2b2d30;border-radius:0;background:transparent;text-align:left;width:100%;padding:10px 13px;overflow-wrap:anywhere}
+.list-item.active{background:#303b47} .list-item strong{display:block;font-size:12px;margin-bottom:4px} .list-item small{display:block;color:#9c9fa5;font-size:10px}
+main{overflow:auto;padding:20px 22px 50px;min-width:0}.editor{max-width:1060px}
+.section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:15px}
+.section-title h2{font-size:17px}.hint{color:#a0a3aa;font-size:11px;line-height:1.5}
+.form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form label,.field-table label{display:grid;gap:5px;font-size:11px;color:#b8bbc0}
+.wide{grid-column:1/-1}.panel{border:1px solid #3b3e43;border-radius:8px;background:#202226;padding:15px;margin-bottom:15px}
+.panel h3{font-size:13px;margin-bottom:12px}.panel-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+.panel-head h3{margin:0}.node-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:6px}
+.node-checks label{display:flex;align-items:center;gap:7px;background:#292b2e;border:1px solid #3c3f43;padding:7px;border-radius:5px;font-size:11px;cursor:pointer;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:880px}
+th{text-align:left;font-size:10px;color:#aaa;font-weight:600;background:#2a2c30}
+td,th{padding:6px;border:1px solid #414348}td input,td select{padding:6px;min-width:88px}
+td textarea{min-width:140px;min-height:36px;padding:5px}
+td .controls{display:flex;gap:3px}td .controls button{padding:5px}
+.footer{display:flex;justify-content:space-between;align-items:center;gap:9px;padding:10px 15px;border-top:1px solid #36383b;background:#212225;font-size:11px;color:#a1a5aa}
+.message{color:#c9d7e8}.warn{color:#e6b97b}.error{color:#ffa39f}
+.empty{text-align:center;color:#9ca0a5;padding:50px 20px}.pill{display:inline-block;background:#384655;border:1px solid #506477;color:#cfe2f4;padding:2px 7px;border-radius:30px;font-size:10px;margin-left:6px}
+.help{border-left:3px solid #70889d;margin-top:12px;padding:9px 12px;color:#b7bbc0;background:#292c31}
+@media(max-width:750px){.layout{grid-template-columns:190px 1fr}main{padding:12px}.form{grid-template-columns:1fr}header{flex-wrap:wrap}header .actions{margin-left:0}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>Interfy Partner Editor</h1><small>오프라인 협력사 노드·메시지 편집기</small></div>
+  <div class="actions">
+    <button id="open">JSON 열기</button>
+    <button id="validate">검증</button>
+    <button id="save" class="primary">JSON 저장</button>
+  </div>
+  <input id="file" type="file" accept=".json,application/json" hidden>
+</header>
+<div class="notice">로컬 브라우저에서만 실행됩니다. 서버 통신이 없으며 JSON 파일을 직접 열고 저장합니다. 수정 사항은 저장 버튼을 누르기 전까지 메모리에만 있습니다.</div>
+<div class="layout">
+  <aside>
+    <nav><button class="active" id="tab-nodes">노드</button><button id="tab-messages">메시지 / Enum</button></nav>
+    <div class="sidebar-tools"><input id="search" placeholder="이름 검색"><button id="add" title="현재 항목 추가">+ 추가</button></div>
+    <div id="list" class="list"></div>
+  </aside>
+  <main><div id="editor" class="editor"></div></main>
+</div>
+<div class="footer"><span id="status">작업 패키지 JSON을 열어 주세요.</span><span id="stats"></span></div>
+<script>
+'use strict';
+(function(){
+var data=null, tab='nodes', active=-1, dirty=false, filename='interfy-partner-edited.json';
+var basic=['bool','char','int8','uint8','int16','uint16','int32','uint32','int64','uint64','float','double'];
+var enumTypes=['int8','uint8','int16','uint16','int32','uint32','int64','uint64'];
+var ident=/^[A-Za-z_][A-Za-z0-9_]*$/;
+var $=function(id){return document.getElementById(id);};
+var esc=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');};
+function status(t,kind){$('status').textContent=t;$('status').className=kind||'';}
+function mark(){dirty=true;stats();}
+function stats(){
+ $('stats').textContent=data?(data.integration_targets.length+'개 노드 · '+data.messages.length+'개 메시지/Enum'+(dirty?' · ● 미저장':'')):'';
+}
+function records(){return data?(tab==='nodes'?data.integration_targets:data.messages):[];}
+function selected(){return records()[active]||null;}
+function options(values,value){return values.map(function(v){return '<option value="'+esc(v)+'"'+(String(v)===String(value)?' selected':'')+'>'+esc(v)+'</option>';}).join('');}
+function input(k,v,type){return '<input data-key="'+esc(k)+'" value="'+esc(v)+'"'+(type?' type="'+type+'"':'')+'>';}
+function area(k,v){return '<textarea data-key="'+esc(k)+'">'+esc(v)+'</textarea>';}
+function field(k,label,v,wide){return '<label'+(wide?' class="wide"':'')+'>'+label+input(k,v)+'</label>';}
+function paragraph(k,label,v){return '<label class="wide">'+label+area(k,v)+'</label>';}
+function unique(base,values){var x=base,i=1;while(values.some(function(v){return String(v).toLowerCase()===x.toLowerCase();})){x=base+'_'+i++;}return x;}
+function norm(dataObject){
+ if(!dataObject || typeof dataObject!=='object'||dataObject.format!=='interfy-project'||!Array.isArray(dataObject.messages)||!Array.isArray(dataObject.integration_targets))throw Error('Interfy 프로젝트 JSON 파일이 아닙니다.');
+ dataObject.messages.forEach(function(m){m.fields=Array.isArray(m.fields)?m.fields:[];m.enum_values=Array.isArray(m.enum_values)?m.enum_values:[];m.tx_targets=Array.isArray(m.tx_targets)?m.tx_targets:[];m.rx_targets=Array.isArray(m.rx_targets)?m.rx_targets:[];m.labels=Array.isArray(m.labels)?m.labels:[];m.definition_type=m.definition_type||'STRUCT';});
+ dataObject.groups=Array.isArray(dataObject.groups)?dataObject.groups:[];
+ dataObject.labels=Array.isArray(dataObject.labels)?dataObject.labels:[];
+ dataObject.project=dataObject.project||{name:'Partner project'};
+}
+async function load(file){
+ if(dirty&&!confirm('저장하지 않은 변경사항이 있습니다. 다른 파일을 열까요?'))return;
+ try{
+  var text=await file.text(),next=JSON.parse(text);norm(next);data=next;dirty=false;active=-1;filename=file.name.replace(/\.json$/i,'')+'-edited.json';render();status('불러오기 완료: '+file.name,'message');
+ }catch(e){alert('파일을 열 수 없습니다.\\n'+e.message);}
+}
+function changeTab(next){tab=next;active=-1;render();}
+function render(){
+ $('tab-nodes').classList.toggle('active',tab==='nodes');$('tab-messages').classList.toggle('active',tab==='messages');
+ var q=$('search').value.trim().toLowerCase();var rows=records();var list='';
+ rows.forEach(function(row,i){
+  var label=tab==='nodes'?row.name:row.struct_name;var sub=tab==='nodes'?(row.description||'설명 없음'):((row.definition_type||'STRUCT')+' · '+(row.name||''));
+  if(q&&(label+' '+sub).toLowerCase().indexOf(q)<0)return;
+  list+='<button class="list-item'+(i===active?' active':'')+'" data-select="'+i+'"><strong>'+esc(label)+'</strong><small>'+esc(sub)+'</small></button>';
+ });
+ $('list').innerHTML=list||'<div class="empty">표시할 항목이 없습니다.</div>';
+ $('editor').innerHTML=!data?'<div class="empty"><h2>작업 패키지 열기</h2><p>Interfy에서 내보낸 JSON을 먼저 불러와 주세요.</p></div>':active<0?'<div class="empty">왼쪽에서 노드 또는 메시지를 선택하세요.</div>':tab==='nodes'?renderNode():renderMessage();
+ stats();
+}
+function renderNode(){
+ var n=selected(), related=data.messages.filter(function(m){return m.tx_targets.indexOf(n.name)>=0||m.rx_targets.indexOf(n.name)>=0;});
+ return '<div class="section-title"><h2>노드 수정</h2><button class="danger" data-action="delete-node">노드 삭제</button></div>'+
+ '<div class="panel"><div class="form">'+field('name','노드 이름',n.name)+field('description','설명',n.description||'',true)+'</div></div>'+
+ '<div class="panel"><h3>연결된 메시지 ('+related.length+')</h3>'+
+ (related.map(function(m){return '<p style="padding:7px 0;border-bottom:1px solid #3b3e43">'+esc(m.struct_name)+' <span class="hint">'+(m.tx_targets.indexOf(n.name)>=0?'송신 ':'')+(m.rx_targets.indexOf(n.name)>=0?'수신':'')+'</span></p>';}).join('')||'<p class="hint">연결된 메시지가 없습니다.</p>')+'</div>';
+}
+function choiceNodes(kind,names){
+ return '<div class="node-checks">'+data.integration_targets.map(function(node,i){return '<label><input type="checkbox" data-direction="'+kind+'" data-node="'+esc(node.name)+'" '+(names.indexOf(node.name)>=0?'checked':'')+'>'+esc(node.name)+'</label>';}).join('')+'</div>';
+}
+function renderMessage(){
+ var m=selected(),isEnum=m.definition_type==='ENUM';
+ var top='<div class="section-title"><h2>'+esc(m.struct_name||'메시지')+'<span class="pill">'+(isEnum?'ENUM':'STRUCT')+'</span></h2><div><button data-action="copy-message">복사</button> <button class="danger" data-action="delete-message">삭제</button></div></div>';
+ var metadata='<div class="panel"><h3>기본 정보</h3><div class="form">'+
+ field('struct_name','구조체/Enum 이름',m.struct_name)+field('name','메시지 용도',m.name)+
+ '<label>정의 유형<select data-key="definition_type">'+options(['STRUCT','ENUM'],m.definition_type)+'</select></label>'+
+ (isEnum?'<label>Enum 기본 자료형<select data-key="enum_underlying_type">'+options(enumTypes,m.enum_underlying_type||'uint32')+'</select></label>':field('period','주기 (ms 또는 비주기)',m.period||'비주기'))+
+ (!isEnum?field('infocode','정보코드',m.infocode||'')+field('protocol','프로토콜 (쉼표 구분)',m.protocol||''):'')+
+ paragraph('description','설명',m.description||'')+'</div></div>';
+ var relations=isEnum?'':'<div class="panel"><h3>송신 노드</h3>'+choiceNodes('tx_targets',m.tx_targets)+'<h3 style="margin-top:15px">수신 노드</h3>'+choiceNodes('rx_targets',m.rx_targets)+
+ '<div class="help">담당 범위 외 노드도 수정할 수 있습니다. 없는 노드는 ‘노드’ 탭에서 추가하세요.</div></div>';
+ var rows=isEnum?m.enum_values:m.fields;
+ var headers=isEnum?['이름','정수 값','설명','순서']:['필드명','종류','자료형/참조','배열 차원','용도','범위','단위','비고','순서'];
+ var body=rows.map(function(f,i){
+  function cell(prop,val){return '<td><input data-row="'+i+'" data-prop="'+prop+'" value="'+esc(val==null?'':val)+'"></td>';}
+  var middle='';
+  if(isEnum) middle=cell('name',f.name)+cell('value',f.value)+cell('description',f.description);
+  else{
+   var kind=f.type_kind||'BASIC';
+   var choices=kind==='BASIC'?basic:data.messages.filter(function(x){return (x.definition_type==='ENUM'?'ENUM':'MESSAGE')===kind&&x.struct_name!==m.struct_name;}).map(function(x){return x.struct_name;});
+   middle=cell('name',f.name)+'<td><select data-row="'+i+'" data-prop="type_kind">'+options(['BASIC','MESSAGE','ENUM'],kind)+'</select></td>'+
+    '<td><select data-row="'+i+'" data-prop="data_type">'+options(choices,f.data_type||f.ref_message||'')+'</select></td>'+
+    cell('array_dimensions',f.array_dimensions||'')+cell('purpose',f.purpose||'')+cell('value_range',f.value_range||'')+cell('unit',f.unit||'')+cell('note',f.note||'');
+  }
+  return '<tr>'+middle+'<td><div class="controls"><button data-action="up" data-row="'+i+'" title="위로">↑</button><button data-action="down" data-row="'+i+'" title="아래로">↓</button><button class="danger" data-action="remove-row" data-row="'+i+'" title="삭제">×</button></div></td></tr>';
+ }).join('');
+ var fields='<div class="panel"><div class="panel-head"><h3>'+(isEnum?'Enum 값':'필드 정의')+' ('+rows.length+')</h3><button data-action="add-row">+ 추가</button></div>'+
+ '<div class="table-wrap"><table><thead><tr>'+headers.map(function(x){return '<th>'+x+'</th>';}).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>'+
+ '<p class="hint" style="margin-top:10px">필드 자료형은 Interfy 기본 타입이나 현재 패키지의 STRUCT/ENUM에서 선택합니다. 필드 순서는 ↑/↓ 버튼으로 바꿀 수 있습니다.</p></div>';
+ return top+metadata+relations+fields;
+}
+function add(){
+ if(!data){alert('JSON 파일을 먼저 열어 주세요.');return;}
+ if(tab==='nodes'){
+  var name=unique('NEW_NODE',data.integration_targets.map(function(x){return x.name;}));
+  data.integration_targets.push({name:name,description:''});
+ }else{
+  var name=unique('T_NEW_MESSAGE',data.messages.map(function(x){return x.struct_name;}));
+  data.messages.push({name:name,struct_name:name,definition_type:'STRUCT',period:'비주기',description:'',infocode:'',protocol:'',protocols:[],enum_underlying_type:'uint32',fields:[],enum_values:[],labels:[],tx_targets:[],rx_targets:[],version:1,order:data.messages.length+1});
+ }
+ active=records().length-1;mark();render();
+}
+function removeSelected(){
+ if(!data||active<0)return;
+ var row=selected();
+ if(tab==='nodes'){
+  if(!confirm('노드 '+row.name+'을 삭제하고 모든 메시지의 송수신 관계에서 제거할까요?'))return;
+  data.messages.forEach(function(m){m.tx_targets=m.tx_targets.filter(function(n){return n!==row.name;});m.rx_targets=m.rx_targets.filter(function(n){return n!==row.name;});});
+  if(data.collaboration)data.collaboration.selected_targets=(data.collaboration.selected_targets||[]).filter(function(n){return n!==row.name;});
+ }else{
+  var refs=data.messages.filter(function(m){return m.fields.some(function(f){return (f.type_kind==='MESSAGE'||f.type_kind==='ENUM')&&(f.ref_message||f.data_type)===row.struct_name;});});
+  if(refs.length){alert('다른 메시지에서 자료형으로 참조하고 있어 삭제할 수 없습니다: '+refs.map(function(x){return x.struct_name;}).join(', '));return;}
+  if(!confirm(row.struct_name+'을 삭제할까요?'))return;
+  data.groups.forEach(function(g){g.messages=(g.messages||[]).filter(function(n){return n!==row.struct_name;});});
+  data.labels.forEach(function(g){g.messages=(g.messages||[]).filter(function(n){return n!==row.struct_name;});});
+ }
+ records().splice(active,1);active=-1;mark();render();
+}
+function onHeaderChange(key,value){
+ var row=selected();if(!row)return;
+ value=String(value);
+ if(key==='name' && tab==='nodes'){
+  var old=row.name,neu=value.trim();
+  if(!neu||data.integration_targets.some(function(n){return n!==row&&n.name.toLowerCase()===neu.toLowerCase()})){alert('노드 이름이 비었거나 중복됩니다.');render();return;}
+  data.messages.forEach(function(m){['tx_targets','rx_targets'].forEach(function(prop){m[prop]=m[prop].map(function(n){return n===old?neu:n;});});});
+  if(data.collaboration)data.collaboration.selected_targets=(data.collaboration.selected_targets||[]).map(function(n){return n===old?neu:n;});
+  row.name=neu;
+ }else if(key==='struct_name' && tab==='messages'){
+  var old=row.struct_name,neu=value.trim();
+  if(!ident.test(neu)||data.messages.some(function(m){return m!==row&&m.struct_name.toLowerCase()===neu.toLowerCase()})){alert('구조체 이름은 영문자 또는 _ 로 시작하는 고유 식별자여야 합니다.');render();return;}
+  data.messages.forEach(function(m){m.fields.forEach(function(f){if((f.type_kind==='MESSAGE'||f.type_kind==='ENUM')&&(f.ref_message===old||f.data_type===old)){f.ref_message=neu;f.data_type=neu;}});});
+  data.groups.forEach(function(g){g.messages=(g.messages||[]).map(function(n){return n===old?neu:n;});});
+  data.labels.forEach(function(g){g.messages=(g.messages||[]).map(function(n){return n===old?neu:n;});});
+  row.struct_name=neu;
+ }else if(key==='definition_type' && tab==='messages'){
+  if(value!==row.definition_type &&(row.fields.length||row.enum_values.length)&&!confirm('정의 유형을 바꾸면 기존 필드/Enum 값은 제거됩니다. 계속할까요?')){render();return;}
+  row.definition_type=value;row.fields=[];row.enum_values=[];
+  if(value==='ENUM'){row.infocode='';row.period='비주기';row.protocol='';row.protocols=[];row.tx_targets=[];row.rx_targets=[];}
+ }else{
+  row[key]=value;
+  if(key==='protocol')row.protocols=value.split(/[,;\n|+]/).map(function(t){return t.trim();}).filter(Boolean);
+ }
+ mark();render();
+}
+function changeTableRow(i,prop,value){
+ var m=selected(),list=m.definition_type==='ENUM'?m.enum_values:m.fields;
+ var row=list[i];if(!row)return;
+ if(prop==='type_kind'){
+  row.type_kind=value;row.data_type=value==='BASIC'?'uint32':(data.messages.find(function(x){return (value==='ENUM'?'ENUM':'STRUCT')===x.definition_type&&x.struct_name!==m.struct_name;})||{}).struct_name||'';
+  row.ref_message=value==='BASIC'?'':row.data_type;
+ }else if(prop==='data_type'){
+  row.data_type=value;row.ref_message=row.type_kind==='BASIC'?'':value;
+ }else if(prop==='value')row.value=value===''?'':Number(value);
+ else row[prop]=value;
+ mark();render();
+}
+function rowAction(action,index){
+ var m=selected(),list=m.definition_type==='ENUM'?m.enum_values:m.fields;
+ if(action==='add-row'){
+  if(m.definition_type==='ENUM')list.push({name:unique('VALUE',list.map(function(r){return r.name;})),value:0,description:'',order:list.length+1});
+  else list.push({name:unique('field',list.map(function(r){return r.name;})),type_kind:'BASIC',data_type:'uint32',ref_message:'',array_dimensions:'',purpose:'',description:'',value_range:'',unit:'',note:'',order:list.length+1});
+ }else if(action==='remove-row')list.splice(index,1);
+ else if(action==='up'&&index>0){var t=list[index-1];list[index-1]=list[index];list[index]=t;}
+ else if(action==='down'&&index<list.length-1){var t2=list[index+1];list[index+1]=list[index];list[index]=t2;}
+ list.forEach(function(x,i){x.order=i+1;});mark();render();
+}
+function copyMessage(){
+ var m=selected(),clone=JSON.parse(JSON.stringify(m));
+ clone.struct_name=unique(m.struct_name+'_COPY',data.messages.map(function(x){return x.struct_name;}));
+ clone.name=(m.name||'')+' 복사';clone.infocode='';clone.order=data.messages.length+1;clone.version=1;
+ data.messages.push(clone);active=data.messages.length-1;mark();render();
+}
+function validate(){
+ if(!data)return ['JSON 파일을 먼저 열어 주세요.'];
+ var errors=[],names=new Set(),nodeNames=new Set(),infos=new Set();
+ data.integration_targets.forEach(function(n){
+  var name=String(n.name||'').trim();
+  if(!name||nodeNames.has(name.toLowerCase()))errors.push('노드 이름 누락/중복: '+name);
+  nodeNames.add(name.toLowerCase());
+ });
+ data.messages.forEach(function(m){
+  if(!ident.test(m.struct_name||'')||names.has(m.struct_name.toLowerCase()))errors.push('메시지/Enum 이름 오류 또는 중복: '+m.struct_name);
+  names.add(String(m.struct_name||'').toLowerCase());
+  if(!String(m.name||'').trim())errors.push('메시지 용도 누락: '+m.struct_name);
+  if(m.definition_type==='STRUCT'){
+   if(m.infocode&&!/^\d+$/.test(String(m.infocode)))errors.push('정보코드는 숫자여야 합니다: '+m.struct_name);
+   if(m.infocode){if(infos.has(String(m.infocode)))errors.push('정보코드 중복: '+m.infocode);infos.add(String(m.infocode));}
+   if(!['','0','비주기'].includes(String(m.period||''))&&!/^\d+$/.test(String(m.period)))errors.push('주기는 숫자 또는 비주기: '+m.struct_name);
+  }
+  var seen=new Set(),enumNums=new Set();
+  (m.definition_type==='ENUM'?m.enum_values:m.fields).forEach(function(f){
+   if(!ident.test(f.name||'')||seen.has(String(f.name||'').toLowerCase()))errors.push(m.struct_name+'.'+f.name+': 필드/Enum 이름 오류 또는 중복');
+   seen.add(String(f.name||'').toLowerCase());
+   if(m.definition_type==='ENUM'){
+    if(!Number.isInteger(f.value)||enumNums.has(f.value))errors.push(m.struct_name+'.'+f.name+': Enum 정수 값 오류/중복');
+    enumNums.add(f.value);
+   }else{
+    if(f.type_kind==='BASIC'&&!basic.includes(f.data_type))errors.push(m.struct_name+'.'+f.name+': 지원하지 않는 기본 자료형');
+    if(f.type_kind==='MESSAGE'||f.type_kind==='ENUM'){
+     var dep=data.messages.find(function(d){return d.struct_name===(f.ref_message||f.data_type);});
+     if(!dep||(dep.definition_type==='ENUM'?'ENUM':'MESSAGE')!==f.type_kind)errors.push(m.struct_name+'.'+f.name+': 잘못된 참조 자료형');
+     if(dep===m)errors.push(m.struct_name+'.'+f.name+': 자기 자신을 참조할 수 없음');
+    }
+    if(f.array_dimensions&&!/^[1-9]\d*(,[1-9]\d*)*$/.test(String(f.array_dimensions)))errors.push(m.struct_name+'.'+f.name+': 배열 차원 형식 오류 (예: 4,8)');
+   }
+  });
+  ['tx_targets','rx_targets'].forEach(function(direction){m[direction].forEach(function(name){if(!nodeNames.has(name.toLowerCase()))errors.push(m.struct_name+': 등록되지 않은 노드 '+name);});});
+ });
+ // Check reference cycles after all names are available.
+ var edges={};data.messages.filter(function(m){return m.definition_type==='STRUCT';}).forEach(function(m){edges[m.struct_name]=m.fields.filter(function(f){return f.type_kind==='MESSAGE';}).map(function(f){return f.ref_message||f.data_type;});});
+ var activeSet=new Set(),done=new Set();
+ function visit(name){if(activeSet.has(name)){errors.push('순환 참조: '+name);return;}if(done.has(name))return;activeSet.add(name);(edges[name]||[]).forEach(function(n){if(edges[n])visit(n);});activeSet.delete(name);done.add(name);}
+ Object.keys(edges).forEach(visit);
+ return errors;
+}
+function save(){
+ if(!data){alert('JSON 파일을 먼저 열어 주세요.');return;}
+ var errors=validate();
+ if(errors.length){alert('검증 오류 ('+errors.length+'건)\n'+errors.slice(0,15).join('\n')+(errors.length>15?'\n...':''));status('검증 오류 '+errors.length+'건','error');return;}
+ data.messages.forEach(function(m,i){m.order=i+1;m.fields.forEach(function(f,j){f.order=j+1;});m.enum_values.forEach(function(v,j){v.order=j+1;});m.protocols=(m.protocol||'').split(/[,;\n|+]/).map(function(x){return x.trim();}).filter(Boolean);});
+ var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
+ var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;
+ document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
+ dirty=false;stats();status('검증 후 JSON 파일로 저장했습니다.','message');
+}
+$('open').addEventListener('click',function(){$('file').click();});
+$('file').addEventListener('change',function(e){if(e.target.files[0])load(e.target.files[0]);e.target.value='';});
+$('save').addEventListener('click',save);
+$('validate').addEventListener('click',function(){var errors=validate();alert(errors.length?'검증 오류 '+errors.length+'건\n'+errors.join('\n'):'검증 완료: 오류 없음');status(errors.length?'검증 오류 '+errors.length+'건':'검증 완료: 오류 없음',errors.length?'error':'message');});
+$('tab-nodes').addEventListener('click',function(){changeTab('nodes');});
+$('tab-messages').addEventListener('click',function(){changeTab('messages');});
+$('search').addEventListener('input',render);
+$('add').addEventListener('click',add);
+$('list').addEventListener('click',function(e){var b=e.target.closest('[data-select]');if(b){active=Number(b.dataset.select);render();}});
+$('editor').addEventListener('change',function(e){
+ var target=e.target;if(!data||!selected())return;
+ if(target.dataset.direction){
+  var m=selected(),which=target.dataset.direction,name=target.dataset.node;
+  if(target.checked&&!m[which].includes(name))m[which].push(name);
+  if(!target.checked)m[which]=m[which].filter(function(x){return x!==name;});
+  mark();render();return;
+ }
+ if(target.dataset.row!==undefined&&target.dataset.prop){changeTableRow(Number(target.dataset.row),target.dataset.prop,target.value);return;}
+ if(target.dataset.key)onHeaderChange(target.dataset.key,target.value);
+});
+$('editor').addEventListener('click',function(e){
+ var b=e.target.closest('[data-action]');if(!b)return;
+ var action=b.dataset.action;
+ if(action==='delete-node'||action==='delete-message')removeSelected();
+ else if(action==='copy-message')copyMessage();
+ else if(['add-row','remove-row','up','down'].includes(action))rowAction(action,Number(b.dataset.row));
+});
+window.addEventListener('beforeunload',function(e){if(!dirty)return;e.preventDefault();e.returnValue='';});
+render();
+})();
+</script>
+</body>
+</html>
