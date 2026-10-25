@@ -4425,6 +4425,24 @@ function ExportPanel({ api, project, labels = [], integrationTargets = [], onOpe
       <div className="card span-3">
         <div className="card-title">
           <div>
+            <h2>인터페이스설계기술서(IDD) Word 출력</h2>
+            <p>IDD 3.1 연동 개념과 3.2 연동 상세설계 표를 Word(.docx)로 출력합니다. 노드는 CSCI로 처리하고, 내부·외부 구분 없이 송수신 관계별로 작성합니다.</p>
+          </div>
+        </div>
+        <div className="export-actions">
+          <button type="button" onClick={() => downloadExport(
+            '/projects/' + project.id + '/export/idd-docx',
+            String(project.acronym || project.name || 'Interfy').replace(/[\\/:*?"<>|]/g, '_') + '_IDD.docx'
+          )}>
+            <Download size={16}/> IDD 3.1·3.2 Word (.docx)
+          </button>
+        </div>
+        <p className="muted small">표 5·6(인터페이스 목록), 표 7(사용자 인터페이스), 표 8·11(데이터요소), 표 9·12(통신방법), 표 10(프로토콜) 내용을 작성하며, Interfy에 없는 값은 빈칸으로 남깁니다.</p>
+      </div>
+
+      <div className="card span-3">
+        <div className="card-title">
+          <div>
             <h2>협력사 오프라인 작업 패키지</h2>
             <p>담당 노드를 여러 개 선택해 관련 송수신 메시지와 참조 STRUCT/ENUM을 JSON으로 내보냅니다. 협력사는 HTML 편집기에서 수정하고 JSON을 회신합니다.</p>
           </div>
