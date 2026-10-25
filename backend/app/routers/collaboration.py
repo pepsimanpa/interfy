@@ -11,14 +11,16 @@ import json
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Project, IntegrationTarget, User
-from .project_json import export_project_json, _json_response, _safe_filename_part
+from ..models import Project, IntegrationTarget, User, Message, MessageTxTargetItem, MessageRxTargetItem, MessageChangeHistory, ChangeType
+from .project_json import export_project_json, _json_response, _safe_filename_part, _load_project_json
+from .backups import _create_project_backup
 
 
 router = APIRouter(tags=["collaboration"])
@@ -28,7 +30,7 @@ class PartnerExportRequest(BaseModel):
     target_ids: list[int] = Field(min_length=1)
 
 
-def build_partner_package(project_data: dict[str, Any], selected_names: list[str]) -> dict[str, Any]:
+def build_partner_package(project_data: dict[str, Any], selected_names: list[str], node_ids: dict[str, int] | None = None, project_id: int | None = None) -> dict[str, Any]:
     """Pure subset builder, also useful from regression tests."""
     selected = {name.lower() for name in selected_names}
     messages = project_data.get("messages", [])
@@ -72,10 +74,12 @@ def build_partner_package(project_data: dict[str, Any], selected_names: list[str
     for row in package["messages"]:
         related_nodes.update(str(name).lower() for name in row.get("tx_targets", []) + row.get("rx_targets", []))
     package["integration_targets"] = [
-        node for node in project_data.get("integration_targets", [])
+        {**node, **({"interfy_id": node_ids[node["name"].lower()]} if node_ids and node["name"].lower() in node_ids else {})}
+        for node in project_data.get("integration_targets", [])
         if node["name"].lower() in related_nodes
     ]
     package["collaboration"] = {
+        "project_id": project_id,
         "format": "interfy-partner-v1",
         "exported_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "selected_targets": [
@@ -108,6 +112,186 @@ def export_partner_package(
 
     full_json = export_project_json(project_id, db, current_user)
     project_data = json.loads(full_json.body)
-    content = build_partner_package(project_data, [target.name for target in targets])
+    all_nodes = db.query(IntegrationTarget).filter(IntegrationTarget.project_id == project_id).all()
+    node_ids = {node.name.lower(): node.id for node in all_nodes}
+    content = build_partner_package(project_data, [target.name for target in targets], node_ids, project_id)
     base = _safe_filename_part(project.acronym or project.name or "interfy")
     return _json_response(content, f"{base}-partner-package.json")
+
+
+async def _read_partner_json(file: UploadFile) -> dict[str, Any]:
+    try:
+        data = json.loads((await file.read()).decode("utf-8-sig"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="유효한 UTF-8 JSON 파일이 아닙니다.") from exc
+    _load_project_json(data)
+    meta = data.get("collaboration")
+    if not isinstance(meta, dict) or meta.get("format") != "interfy-partner-v1":
+        raise HTTPException(status_code=422, detail="Interfy 협력사 작업 패키지가 아닙니다.")
+    if not isinstance(meta.get("base_targets"), list):
+        raise HTTPException(status_code=422, detail="패키지 원본 노드 정보가 없습니다.")
+    return data
+
+
+def _node_plan(db: Session, project_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    meta = data["collaboration"]
+    if meta.get("project_id") != project_id:
+        raise HTTPException(status_code=409, detail="다른 프로젝트에서 내보낸 협력사 패키지입니다.")
+
+    bases = meta["base_targets"]
+    incoming = data.get("integration_targets") or []
+    if not isinstance(incoming, list):
+        raise HTTPException(status_code=422, detail="노드 목록이 올바르지 않습니다.")
+
+    current_rows = db.query(IntegrationTarget).filter(IntegrationTarget.project_id == project_id).all()
+    by_id = {item.id: item for item in current_rows}
+    base_by_id = {}
+    blockers = []
+    for item in bases:
+        try:
+            identity = int(item.get("interfy_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="노드 식별자가 없는 오래된 패키지입니다. 다시 내보내 주세요.")
+        if identity in base_by_id:
+            raise HTTPException(status_code=422, detail="패키지 노드 식별자가 중복되었습니다.")
+        base_by_id[identity] = item
+
+    seen_names = set()
+    seen_ids = set()
+    intended_names = {}
+    actions = []
+    for item in incoming:
+        name = str(item.get("name") or "").strip()
+        description = str(item.get("description") or "")
+        if not name or len(name) > 120 or name.lower() in seen_names:
+            raise HTTPException(status_code=422, detail=f"노드 이름이 비었거나 중복됩니다: {name}")
+        seen_names.add(name.lower())
+        raw_id = item.get("interfy_id")
+        identity = int(raw_id) if raw_id is not None else None
+        if identity is None:
+            actions.append({"action": "ADD", "name": name, "description": description})
+            continue
+        if identity in seen_ids or identity not in base_by_id:
+            raise HTTPException(status_code=422, detail="패키지에 알 수 없는 노드 식별자가 포함되어 있습니다.")
+        seen_ids.add(identity)
+        base = base_by_id[identity]
+        current = by_id.get(identity)
+        if current is None:
+            blockers.append(f"{base.get('name')}: 원본 노드가 현재 프로젝트에서 삭제되었습니다.")
+            continue
+        original = (str(base.get("name") or ""), str(base.get("description") or ""))
+        actual = (current.name, current.description or "")
+        proposed = (name, description)
+        if actual != original and actual != proposed:
+            blockers.append(f"{original[0]}: 내보낸 이후 DB의 노드가 변경되었습니다. 다시 내보내 주세요.")
+        intended_names[identity] = name
+        if proposed != actual:
+            actions.append({"action": "UPDATE", "id": identity, "before_name": current.name, "name": name, "description": description})
+
+    for identity, base in base_by_id.items():
+        if identity in seen_ids:
+            continue
+        current = by_id.get(identity)
+        if current is None:
+            continue
+        if current.name != str(base.get("name") or ""):
+            blockers.append(f"{base.get('name')}: 원본 노드 이름이 변경되어 삭제할 수 없습니다.")
+        tx_count = db.query(MessageTxTargetItem).filter(MessageTxTargetItem.target_id == identity).count()
+        rx_count = db.query(MessageRxTargetItem).filter(MessageRxTargetItem.target_id == identity).count()
+        actions.append({"action": "DELETE", "id": identity, "name": current.name, "tx_count": tx_count, "rx_count": rx_count})
+
+    # Compare projected final names (including untouched DB nodes), so swaps and
+    # conflicts are caught before the transaction mutates anything.
+    deleted = {item["id"] for item in actions if item["action"] == "DELETE"}
+    final_names = {}
+    for current in current_rows:
+        if current.id in deleted:
+            continue
+        name = intended_names.get(current.id, current.name)
+        if name.lower() in final_names:
+            blockers.append(f"최종 노드 이름 중복: {name}")
+        final_names[name.lower()] = current.id
+    for action in actions:
+        if action["action"] == "ADD":
+            if action["name"].lower() in final_names:
+                blockers.append(f"이미 존재하는 노드 이름: {action['name']}")
+            final_names[action["name"].lower()] = None
+    return {
+        "node_actions": actions,
+        "summary": {
+            "added": sum(item["action"] == "ADD" for item in actions),
+            "updated": sum(item["action"] == "UPDATE" for item in actions),
+            "deleted": sum(item["action"] == "DELETE" for item in actions),
+        },
+        "blockers": sorted(set(blockers)),
+    }
+
+
+@router.post("/projects/{project_id}/collaboration/nodes/preview")
+async def preview_partner_nodes(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    data = await _read_partner_json(file)
+    return _node_plan(db, project_id, data)
+
+
+@router.post("/projects/{project_id}/collaboration/nodes/apply")
+async def apply_partner_nodes(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    data = await _read_partner_json(file)
+    plan = _node_plan(db, project_id, data)
+    if plan["blockers"]:
+        raise HTTPException(status_code=409, detail=" / ".join(plan["blockers"]))
+    actions = plan["node_actions"]
+    if not actions:
+        return {"ok": True, "updated_count": 0, "backup_id": None}
+
+    backup = _create_project_backup(
+        db, project_id, current_user, kind="AUTO_BEFORE_MERGE",
+        note="협력사 작업 패키지 노드 변경 반영 전 자동 백업",
+    )
+
+    # Temporarily release names in the same transaction, including rename swaps.
+    for action in actions:
+        if action["action"] == "UPDATE":
+            row = db.get(IntegrationTarget, action["id"])
+            row.name = f"_interfy_partner_tmp_{row.id}"
+    db.flush()
+
+    for action in actions:
+        kind = action["action"]
+        if kind == "UPDATE":
+            row = db.get(IntegrationTarget, action["id"])
+            row.name = action["name"]
+            row.description = action["description"]
+        elif kind == "ADD":
+            db.add(IntegrationTarget(project_id=project_id, name=action["name"], description=action["description"]))
+        elif kind == "DELETE":
+            db.delete(db.get(IntegrationTarget, action["id"]))
+    try:
+        db.flush()
+        db.add(MessageChangeHistory(
+            project_id=project_id,
+            message_id=None,
+            changed_by=current_user.id,
+            change_type=ChangeType.UPDATE,
+            before_json={"partner_nodes": {"filename": file.filename}},
+            after_json={"partner_nodes": {"actions": actions, "backup_id": backup.id}},
+        ))
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="노드 변경 중 중복/참조 충돌이 발생했습니다.") from exc
+
+    return {"ok": True, "updated_count": len(actions), "backup_id": backup.id}
