@@ -2473,7 +2473,7 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
 
   return (
     <div className="merge-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose?.(); }}>
-      <div className="merge-modal card" role="dialog" aria-modal="true" aria-label={isMessage ? '메시지 머지' : '노드 머지'}>
+      <div className={`merge-modal card ${isMessage ? '' : 'merge-modal-node'}`} role="dialog" aria-modal="true" aria-label={isMessage ? '메시지 머지' : '노드 머지'}>
         <div className="merge-modal-head">
           <div>
             <p className="eyebrow">정리 도구</p>
