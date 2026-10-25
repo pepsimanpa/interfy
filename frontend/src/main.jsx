@@ -784,6 +784,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [selectedRelationKey, setSelectedRelationKey] = useState(null);
   const [viewerMode, setViewerMode] = useState(() => localStorage.getItem('interfy-viewer-mode') === 'message' ? 'message' : 'node');
+  const [messageNameQuery, setMessageNameQuery] = useState('');
   const [selectedViewerMessageId, setSelectedViewerMessageId] = useState(null);
   const [protocolFilter, setProtocolFilter] = useState('ALL');
   const [tagFilter, setTagFilter] = useState('ALL');
@@ -891,7 +892,10 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     return true;
   }), [messages, protocolFilter, tagFilter, query]);
 
-  const messageViewerMessages = filteredForGraph;
+  const messageViewerMessages = useMemo(
+    () => filteredForGraph.filter(message => messageMatchesNameQuery(message, messageNameQuery)),
+    [filteredForGraph, messageNameQuery]
+  );
   const selectedViewerMessage = messageViewerMessages.find(message => Number(message.id) === Number(selectedViewerMessageId))
     || messageViewerMessages[0]
     || null;
@@ -1026,10 +1030,11 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (isEnumDefinition(message) && protocolFilter !== 'ALL') return false;
     if (!messageMatchesLabelFilter(message, tagFilter)) return false;
     if (!messageMatchesTextQuery(message, query)) return false;
+    if (!messageMatchesNameQuery(message, messageNameQuery)) return false;
     return true;
-  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query]);
+  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query, messageNameQuery]);
 
-  const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim();
+  const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim() && !messageNameQuery.trim();
 
   const currentContext = useMemo(() => {
     if (viewerMode === 'message') {
@@ -1268,6 +1273,8 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const visualizationTop = viewerMode === 'message' ? (
     <MessageCenteredVisualization
       messages={messageViewerMessages}
+      messageNameQuery={messageNameQuery}
+      onMessageNameQueryChange={setMessageNameQuery}
       selectedMessage={selectedViewerMessage}
       onSelectMessage={selectViewerMessage}
       onOpenMessage={onSelectMessage}
@@ -1353,10 +1360,13 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
             <div className="design-context-title">{currentContext.title}<span>{displayedMessages.length}</span></div>
             <p>{currentContext.detail}</p>
           </div>
-          <div className="button-row compact">
-            {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
+          <div className="design-lower-actions">
+            <MessageNameSearch value={messageNameQuery} onChange={setMessageNameQuery} />
+            <div className="button-row compact">
+              {viewerMode === 'node' && <button type="button" className="ghost" onClick={showAll}>전체 보기</button>}
             <button type="button" className="ghost" disabled={messages.length < 2} onClick={() => setMessageMergeOpen(true)}><Layers size={14}/> 메시지 머지</button>
-            <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
+              <button type="button" onClick={prepareCreate}><Plus size={15}/> 메시지 / Enum 추가</button>
+            </div>
           </div>
         </div>
 
@@ -1406,7 +1416,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
                   <td onClick={e => e.stopPropagation()}><div className="row-actions"><button type="button" className="icon ghost-icon" title="복사" onClick={() => handleCopy(message)}><Copy size={14}/></button><button type="button" className="icon danger-icon" title="삭제" onClick={() => onDeleteMessage(message.id)}><Trash2 size={14}/></button></div></td>
                 </tr>
               ))}
-              {!displayedMessages.length && <tr><td colSpan="13" className="muted">현재 조건에 해당하는 메시지가 없습니다.</td></tr>}
+              {!displayedMessages.length && <tr><td colSpan="13" className="muted">{messageNameQuery.trim() ? '검색한 메시지명에 해당하는 결과가 없습니다.' : '현재 조건에 해당하는 메시지가 없습니다.'}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1426,6 +1436,24 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   );
 }
 
+function MessageNameSearch({ value = '', onChange, compact = false }) {
+  return (
+    <div className={compact ? 'design-name-search compact' : 'design-name-search'} role="search">
+      <Search size={14} aria-hidden="true" />
+      <input
+        type="search"
+        aria-label="메시지 이름 검색"
+        placeholder="메시지명 검색"
+        value={value}
+        onChange={event => onChange?.(event.target.value)}
+      />
+      {value && (
+        <button type="button" className="design-name-search-clear" aria-label="메시지 검색 초기화" title="검색 초기화" onClick={() => onChange?.('')}>×</button>
+      )}
+    </div>
+  );
+}
+
 function DesignViewModeToggle({ mode, onChange }) {
   return (
     <div className="design-view-mode-toggle" role="group" aria-label="뷰어 기준 전환">
@@ -1435,7 +1463,7 @@ function DesignViewModeToggle({ mode, onChange }) {
   );
 }
 
-function MessageCenteredVisualization({ messages = [], selectedMessage, onSelectMessage, onOpenMessage, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, onChangeViewerMode, onOpenReferences, onEditNode, onOpenPartialUpdate }) {
+function MessageCenteredVisualization({ messages = [], messageNameQuery = '', onMessageNameQueryChange, selectedMessage, onSelectMessage, onOpenMessage, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, onChangeViewerMode, onOpenReferences, onEditNode, onOpenPartialUpdate }) {
   const txTargets = selectedMessage?.tx_targets || [];
   const rxTargets = selectedMessage?.rx_targets || [];
   const [messagePaneWidth, setMessagePaneWidth] = useState(() => {
@@ -1526,6 +1554,7 @@ function MessageCenteredVisualization({ messages = [], selectedMessage, onSelect
     >
       <aside className="design-device-pane design-message-pane">
         <div className="design-pane-title"><strong>메시지</strong><span>{messages.length}</span></div>
+        <MessageNameSearch value={messageNameQuery} onChange={onMessageNameQueryChange} compact />
         {messages.map(message => {
           const active = Number(selectedMessage?.id) === Number(message.id);
           return (
@@ -1542,7 +1571,7 @@ function MessageCenteredVisualization({ messages = [], selectedMessage, onSelect
             </button>
           );
         })}
-        {!messages.length && <div className="design-message-pane-empty">현재 조건의 메시지가 없습니다.</div>}
+        {!messages.length && <div className="design-message-pane-empty">{messageNameQuery.trim() ? '검색한 메시지명에 해당하는 결과가 없습니다.' : '현재 조건의 메시지가 없습니다.'}</div>}
       </aside>
 
       <div
@@ -1899,6 +1928,15 @@ function messageMatchesTextQuery(message, query) {
     messageProtocols(message).join(' ').toLowerCase().includes(q) ||
     String(message.infocode || '').toLowerCase().includes(q) ||
     String(message.description || '').toLowerCase().includes(q)
+  );
+}
+
+function messageMatchesNameQuery(message, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  return (
+    String(generatedNameOf(message)).toLowerCase().includes(q) ||
+    String(message.name || '').toLowerCase().includes(q)
   );
 }
 
