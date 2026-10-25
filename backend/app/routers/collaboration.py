@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..models import Project, IntegrationTarget, User, Message, MessageTxTargetItem, MessageRxTargetItem, MessageChangeHistory, ChangeType
+from ..models import Project, IntegrationTarget, User, Message, MessageField, MessageEnumValue, MessageGroupItem, MessageLabelItem, MessageTxLabelItem, MessageRxLabelItem, MessageTxTargetItem, MessageRxTargetItem, MessageChangeHistory, ChangeType
 from .project_json import export_project_json, _json_response, _safe_filename_part, _load_project_json
 from .backups import _create_project_backup
 
@@ -303,3 +303,118 @@ async def apply_partner_nodes(
         raise HTTPException(status_code=409, detail="노드 변경 중 중복/참조 충돌이 발생했습니다.") from exc
 
     return {"ok": True, "updated_count": len(actions), "backup_id": backup.id}
+
+
+def _message_delete_plan(db: Session, project_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    if data["collaboration"].get("project_id") != project_id:
+        raise HTTPException(status_code=409, detail="다른 프로젝트의 협력사 작업 패키지입니다.")
+
+    original = data["collaboration"].get("base_messages")
+    if not isinstance(original, list):
+        raise HTTPException(status_code=422, detail="패키지 원본 메시지 정보가 없습니다.")
+
+    current_export = json.loads(export_project_json(project_id, db, None).body)
+    current_by_name = {
+        row["struct_name"].lower(): row
+        for row in current_export["messages"]
+    }
+    incoming_names = {
+        str(row.get("struct_name") or "").lower()
+        for row in data.get("messages", [])
+    }
+    original_by_name = {
+        str(row.get("struct_name") or "").lower(): row
+        for row in original
+    }
+    removed = sorted(set(original_by_name) - incoming_names)
+    actions = []
+    blockers = []
+    for key in removed:
+        before = original_by_name[key]
+        current = current_by_name.get(key)
+        if current is None:
+            continue
+        if current != before:
+            blockers.append(f"{before['struct_name']}: 내보낸 이후 DB에서 변경되어 자동 삭제할 수 없습니다.")
+            continue
+        message = db.query(Message).filter(
+            Message.project_id == project_id,
+            Message.struct_name == current["struct_name"],
+        ).first()
+        if message is None:
+            continue
+        refs = db.query(MessageField).filter(MessageField.ref_message_id == message.id).all()
+        in_removed = [
+            ref for ref in refs
+            if ref.message_id != message.id
+            and db.get(Message, ref.message_id)
+            and (db.get(Message, ref.message_id).struct_name or "").lower() in removed
+        ]
+        outside = [ref for ref in refs if ref not in in_removed and ref.message_id != message.id]
+        if outside:
+            blockers.append(
+                f"{current['struct_name']}: 다른 메시지 {len(outside)}개 필드에서 참조하고 있어 삭제할 수 없습니다."
+            )
+        actions.append({
+            "id": message.id,
+            "struct_name": current["struct_name"],
+            "reference_count": len(refs),
+        })
+    return {"message_deletions": actions, "blockers": sorted(set(blockers))}
+
+
+@router.post("/projects/{project_id}/collaboration/messages/delete-preview")
+async def preview_partner_message_deletions(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _message_delete_plan(db, project_id, await _read_partner_json(file))
+
+
+@router.post("/projects/{project_id}/collaboration/messages/delete-apply")
+async def apply_partner_message_deletions(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.get(Project, project_id) is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    plan = _message_delete_plan(db, project_id, await _read_partner_json(file))
+    if plan["blockers"]:
+        raise HTTPException(status_code=409, detail=" / ".join(plan["blockers"]))
+    actions = plan["message_deletions"]
+    if not actions:
+        return {"ok": True, "deleted_count": 0, "backup_id": None}
+    ids = [action["id"] for action in actions]
+
+    backup = _create_project_backup(
+        db, project_id, current_user, kind="AUTO_BEFORE_MERGE",
+        note="협력사 작업 패키지 메시지 삭제 전 자동 백업",
+    )
+    # All referencing fields outside the selected messages were rejected
+    # in preview, so removing dependent rows cannot break any remaining type.
+    db.query(MessageField).filter(MessageField.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageEnumValue).filter(MessageEnumValue.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageGroupItem).filter(MessageGroupItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageLabelItem).filter(MessageLabelItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageTxLabelItem).filter(MessageTxLabelItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageRxLabelItem).filter(MessageRxLabelItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageTxTargetItem).filter(MessageTxTargetItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageRxTargetItem).filter(MessageRxTargetItem.message_id.in_(ids)).delete(synchronize_session=False)
+    db.query(MessageChangeHistory).filter(MessageChangeHistory.message_id.in_(ids)).update(
+        {MessageChangeHistory.message_id: None}, synchronize_session=False,
+    )
+    db.query(Message).filter(Message.id.in_(ids)).delete(synchronize_session=False)
+    db.add(MessageChangeHistory(
+        project_id=project_id, message_id=None,
+        changed_by=current_user.id, change_type=ChangeType.DELETE,
+        before_json={"partner_deleted_messages": plan["message_deletions"]},
+        after_json={"partner_deleted_messages": {"backup_id": backup.id, "deleted_count": len(ids)}},
+    ))
+    db.commit()
+    return {"ok": True, "deleted_count": len(ids), "backup_id": backup.id}
