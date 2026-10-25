@@ -249,9 +249,22 @@ td .array-size-label { margin: 0; }
   text-align: left;
   box-shadow: none;
 }
+/* Allow the selected-node display to grow vertically instead of hiding chips. */
+.node-multiselect-trigger { white-space: normal; }
 .node-multiselect-trigger:hover { border-color: #93c5fd; background: #fff; filter: none; }
 .node-multiselect.open .node-multiselect-trigger { border-color: #60a5fa; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
-.node-multiselect-summary { min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; }
+/* In the message editor, display every selected TX/RX node chip.
+   The dropdown remains available for adding/removing nodes. */
+.node-multiselect-summary {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  align-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow: visible;
+}
 .node-multiselect-chevron { flex: 0 0 auto; color: #64748b; font-size: 11px; }
 .node-select-chip,
 .node-select-count {
