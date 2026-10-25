@@ -340,7 +340,8 @@ def _message_delete_plan(db: Session, project_id: int, data: dict[str, Any]) -> 
         current = current_by_name.get(key)
         if current is None:
             continue
-        if current != before:
+        base_compare = {key: value for key, value in before.items() if key != "interfy_id"}
+        if current != base_compare:
             blockers.append(f"{before['struct_name']}: 내보낸 이후 DB에서 변경되어 자동 삭제할 수 없습니다.")
             continue
         message = db.query(Message).filter(
