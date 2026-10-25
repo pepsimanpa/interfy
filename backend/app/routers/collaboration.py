@@ -158,6 +158,7 @@ def _node_plan(db: Session, project_id: int, data: dict[str, Any]) -> dict[str, 
 
     seen_names = set()
     seen_ids = set()
+    current_by_name = {row.name.lower(): row for row in current_rows}
     intended_names = {}
     actions = []
     for item in incoming:
@@ -167,8 +168,15 @@ def _node_plan(db: Session, project_id: int, data: dict[str, Any]) -> dict[str, 
             raise HTTPException(status_code=422, detail=f"노드 이름이 비었거나 중복됩니다: {name}")
         seen_names.add(name.lower())
         raw_id = item.get("interfy_id")
-        identity = int(raw_id) if raw_id is not None else None
+        try:
+            identity = int(raw_id) if raw_id is not None else None
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"노드 식별자가 올바르지 않습니다: {name}")
         if identity is None:
+            already = current_by_name.get(name.lower())
+            if already is not None and (already.description or "") == description:
+                # A repeated import after the node was created is a no-op.
+                continue
             actions.append({"action": "ADD", "name": name, "description": description})
             continue
         if identity in seen_ids or identity not in base_by_id:
