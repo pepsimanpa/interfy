@@ -2288,124 +2288,88 @@ function MessageDevices({ targets = [] }) {
 }
 
 function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder = '노드 선택', emptyText = '등록된 노드가 없습니다.' }) {
+  const [draft, setDraft] = useState('');
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [view, setView] = useState('ALL');
   const selectedSet = new Set((selectedIds || []).map(Number));
   const selectedTargets = targets.filter(target => selectedSet.has(Number(target.id)));
-  const normalizedQuery = query.trim().toLowerCase();
+  const query = draft.trim().toLowerCase();
+  const options = targets.filter(target =>
+    !selectedSet.has(Number(target.id)) &&
+    (!query ||
+      String(target.name || '').toLowerCase().includes(query) ||
+      String(target.description || '').toLowerCase().includes(query))
+  );
 
-  const filteredTargets = targets.filter(target => {
-    const isSelected = selectedSet.has(Number(target.id));
-    if (view === 'SELECTED' && !isSelected) return false;
-    if (view === 'UNSELECTED' && isSelected) return false;
-    if (!normalizedQuery) return true;
-    return (
-      String(target.name || '').toLowerCase().includes(normalizedQuery) ||
-      String(target.description || '').toLowerCase().includes(normalizedQuery)
-    );
-  });
-
-  function toggle(targetId) {
-    const next = new Set(selectedSet);
-    const id = Number(targetId);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    onChange?.([...next]);
+  function add(target) {
+    const id = Number(target.id);
+    if (selectedSet.has(id)) return;
+    onChange?.([...(selectedIds || []).map(Number), id]);
+    setDraft('');
+    setOpen(true);
   }
 
   function remove(targetId) {
     onChange?.((selectedIds || []).map(Number).filter(id => id !== Number(targetId)));
   }
 
-  function selectFiltered() {
-    const next = new Set(selectedSet);
-    filteredTargets.forEach(target => next.add(Number(target.id)));
-    onChange?.([...next]);
-  }
-
-  function clearSelected() {
-    onChange?.([]);
-  }
-
   if (!targets.length) return <p className="muted small">{emptyText}</p>;
 
   return (
     <div
-      className={open ? 'node-multiselect open' : 'node-multiselect'}
+      className="node-inline-editor protocol-multi-editor"
       onBlur={event => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      <button type="button" className="node-multiselect-trigger" onClick={() => setOpen(current => !current)}>
-        <span className="node-multiselect-summary">
-          {selectedTargets.length === 0 ? (
-            <span className="muted">{placeholder}</span>
-          ) : (
-            <>
-              {selectedTargets.map(target => <span key={target.id} className="node-select-chip" title={target.name}>{target.name}</span>)}
-            </>
-          )}
-        </span>
-        <span className="node-multiselect-chevron">{open ? '▴' : '▾'}</span>
-      </button>
-
-      {open && (
-        <div className="node-multiselect-popover">
-          <div className="node-multiselect-selected-head">
-            <strong>선택됨 {selectedTargets.length}</strong>
-            {selectedTargets.length > 0 && <button type="button" className="ghost" onClick={clearSelected}>전체 해제</button>}
-          </div>
-
-          {selectedTargets.length > 0 && (
-            <div className="node-multiselect-selected">
-              {selectedTargets.map(target => (
-                <span key={target.id} className="node-select-chip removable" title={target.name}>
-                  {target.name}
-                  <button type="button" aria-label={`${target.name} 선택 해제`} onClick={() => remove(target.id)}>×</button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          <div className="node-multiselect-search">
-            <Search size={14}/>
-            <input
-              autoFocus
-              value={query}
-              placeholder="노드 검색..."
-              onChange={event => setQuery(event.target.value)}
-            />
-          </div>
-
-          <div className="node-multiselect-tabs">
-            <button type="button" className={view === 'ALL' ? 'active' : ''} onClick={() => setView('ALL')}>전체</button>
-            <button type="button" className={view === 'SELECTED' ? 'active' : ''} onClick={() => setView('SELECTED')}>선택됨</button>
-            <button type="button" className={view === 'UNSELECTED' ? 'active' : ''} onClick={() => setView('UNSELECTED')}>미선택</button>
-          </div>
-
-          <div className="node-multiselect-list">
-            {filteredTargets.map(target => (
-              <label key={target.id} className="node-multiselect-option" title={target.description || target.name}>
-                <input type="checkbox" checked={selectedSet.has(Number(target.id))} onChange={() => toggle(target.id)} />
-                <span><strong>{target.name}</strong>{target.description && <small>{target.description}</small>}</span>
-              </label>
-            ))}
-            {!filteredTargets.length && <div className="node-multiselect-empty">조건에 맞는 노드가 없습니다.</div>}
-          </div>
-
-          <div className="node-multiselect-actions">
-            <button type="button" className="ghost" disabled={!filteredTargets.length} onClick={selectFiltered}>
-              {normalizedQuery ? '검색 결과 전체 선택' : '현재 목록 전체 선택'}
+      <div className="node-inline-selected protocol-selected">
+        {selectedTargets.map(target => (
+          <span key={target.id} className="node-inline-chip protocol-chip" title={target.name}>
+            <span className="node-inline-chip-name">{target.name}</span>
+            <button type="button" aria-label={`${target.name} 선택 해제`} onClick={() => remove(target.id)}>×</button>
+          </span>
+        ))}
+        <div className="node-inline-input-wrap protocol-input-wrap">
+          <input
+            aria-label={placeholder}
+            aria-expanded={open && options.length > 0}
+            placeholder={selectedTargets.length ? '노드 추가...' : placeholder}
+            value={draft}
+            onFocus={() => setOpen(true)}
+            onChange={event => { setDraft(event.target.value); setOpen(true); }}
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setOpen(false);
+              } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (options.length) add(options[0]);
+              } else if (event.key === 'Backspace' && !draft && selectedTargets.length) {
+                event.preventDefault();
+                remove(selectedTargets[selectedTargets.length - 1].id);
+              }
+            }}
+          />
+        </div>
+      </div>
+      {open && options.length > 0 && (
+        <div className="node-inline-suggestion-menu suggestion-menu" onMouseDown={event => event.preventDefault()}>
+          <div className="suggestion-group-title">노드 선택</div>
+          {options.map(target => (
+            <button type="button" key={target.id} className="suggestion-item node-inline-suggestion" onClick={() => add(target)} title={target.description || target.name}>
+              <strong>{target.name}</strong>
+              {target.description && <small>{target.description}</small>}
             </button>
-            <button type="button" onClick={() => setOpen(false)}>완료</button>
-          </div>
+          ))}
+        </div>
+      )}
+      {open && query && !options.length && (
+        <div className="node-inline-suggestion-menu suggestion-menu">
+          <div className="node-inline-no-results">일치하는 미선택 노드가 없습니다.</div>
         </div>
       )}
     </div>
   );
 }
-
 
 function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }) {
   const isMessage = kind === 'message';
