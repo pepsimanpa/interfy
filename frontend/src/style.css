@@ -2306,49 +2306,49 @@ body.message-pane-resizing * { cursor: col-resize !important; }
 :root[data-theme="dark"] .merge-blockers { background: #3a2424; border-color: #6b3434; color: #f48771; }
 :root[data-theme="dark"] .merge-warning { background: #332d1e; border-color: #5a4b22; color: #d7ba7d; }
 
-/* Node merge dialog: match the neutral dark node/tag management list.
-   Message merge and all light-theme styles remain unchanged. */
-:root[data-theme="dark"] .merge-modal-node .merge-search:focus-within {
+/* Both node and message merge dialogs share the neutral dark node/tag management colors.
+   Keep the light-theme rules above unchanged. */
+:root[data-theme="dark"] .merge-modal .merge-search:focus-within {
   border-color: #56565a;
   box-shadow: none;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-search input,
-:root[data-theme="dark"] .merge-modal-node .merge-search input:focus,
-:root[data-theme="dark"] .merge-modal-node .merge-search input:focus-visible {
+:root[data-theme="dark"] .merge-modal .merge-search input,
+:root[data-theme="dark"] .merge-modal .merge-search input:focus,
+:root[data-theme="dark"] .merge-modal .merge-search input:focus-visible {
   background: transparent;
   border: 0;
   outline: none;
   box-shadow: none;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-search input::selection {
+:root[data-theme="dark"] .merge-modal .merge-search input::selection {
   background: #66666a;
   color: #fff;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row.selected,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row:focus-within {
+:root[data-theme="dark"] .merge-modal .merge-picker-row,
+:root[data-theme="dark"] .merge-modal .merge-picker-row.selected,
+:root[data-theme="dark"] .merge-modal .merge-picker-row:focus-within {
   background: #252526;
   border-color: #3e3e42;
   box-shadow: none;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row:hover,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row.selected:hover {
+:root[data-theme="dark"] .merge-modal .merge-picker-row:hover,
+:root[data-theme="dark"] .merge-modal .merge-picker-row.selected:hover {
   background: #2a2d2e;
   border-color: #56565a;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row.representative {
+:root[data-theme="dark"] .merge-modal .merge-picker-row.representative {
   background: #252526;
   border-color: #858585;
   box-shadow: inset 3px 0 0 #858585;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row.representative:hover {
+:root[data-theme="dark"] .merge-modal .merge-picker-row.representative:hover {
   background: #2a2d2e;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main:hover,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main:focus,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main:focus-visible,
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main:active {
+:root[data-theme="dark"] .merge-modal .merge-picker-main,
+:root[data-theme="dark"] .merge-modal .merge-picker-main:hover,
+:root[data-theme="dark"] .merge-modal .merge-picker-main:focus,
+:root[data-theme="dark"] .merge-modal .merge-picker-main:focus-visible,
+:root[data-theme="dark"] .merge-modal .merge-picker-main:active {
   background: transparent;
   color: inherit;
   border: 0;
@@ -2356,17 +2356,17 @@ body.message-pane-resizing * { cursor: col-resize !important; }
   box-shadow: none;
   filter: none;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main strong { color: #e7e7e7; }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-main span { color: #9d9d9d; }
-:root[data-theme="dark"] .merge-modal-node .merge-representative-choice.enabled {
+:root[data-theme="dark"] .merge-modal .merge-picker-main strong { color: #e7e7e7; }
+:root[data-theme="dark"] .merge-modal .merge-picker-main span { color: #9d9d9d; }
+:root[data-theme="dark"] .merge-modal .merge-representative-choice.enabled {
   background: #303033;
   color: #d4d4d4;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row input[type="checkbox"],
-:root[data-theme="dark"] .merge-modal-node .merge-picker-row input[type="radio"] {
+:root[data-theme="dark"] .merge-modal .merge-picker-row input[type="checkbox"],
+:root[data-theme="dark"] .merge-modal .merge-picker-row input[type="radio"] {
   accent-color: #858585;
 }
-:root[data-theme="dark"] .merge-modal-node .merge-preview {
+:root[data-theme="dark"] .merge-modal .merge-preview {
   background: #252526;
   border-color: #3e3e42;
 }
