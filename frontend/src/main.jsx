@@ -2209,48 +2209,42 @@ function MessageDevices({ targets = [] }) {
   const [expanded, setExpanded] = useState(false);
   if (!targets.length) return <span className="muted small">-</span>;
 
-  const visible = expanded ? targets : targets.slice(0, 2);
   const hiddenCount = Math.max(0, targets.length - 2);
   const fullTitle = targets.map(target => target.name).join('\n');
+  const firstTargets = targets.slice(0, 2);
+  const remainingTargets = targets.slice(2);
+
+  function renderTarget(target, index) {
+    return (
+      <span
+        key={target.id ?? `${target.name}-${index}`}
+        className="message-device-item"
+        title={target.name}
+      >
+        {target.name}
+      </span>
+    );
+  }
 
   return (
     <div className={expanded ? 'message-device-list expanded' : 'message-device-list'} title={fullTitle}>
-      {visible.map((target, index) => (
-        <span
-          key={target.id ?? `${target.name}-${index}`}
-          className="message-device-item"
-          title={target.name}
-        >
-          {target.name}
-        </span>
-      ))}
-      {!expanded && hiddenCount > 0 && (
+      {firstTargets.map(renderTarget)}
+      {hiddenCount > 0 && (
         <button
           type="button"
-          className="message-device-more"
-          title={`나머지 ${hiddenCount}개 노드 보기`}
+          className={expanded ? 'message-device-more collapse' : 'message-device-more'}
+          title={expanded ? '노드 목록 접기' : `나머지 ${hiddenCount}개 노드 보기`}
+          aria-expanded={expanded}
           onClick={event => {
             event.preventDefault();
             event.stopPropagation();
-            setExpanded(true);
+            setExpanded(current => !current);
           }}
         >
-          +{hiddenCount}개
+          {expanded ? '접기' : `+${hiddenCount}개`}
         </button>
       )}
-      {expanded && targets.length > 2 && (
-        <button
-          type="button"
-          className="message-device-more collapse"
-          onClick={event => {
-            event.preventDefault();
-            event.stopPropagation();
-            setExpanded(false);
-          }}
-        >
-          접기
-        </button>
-      )}
+      {expanded && remainingTargets.map((target, index) => renderTarget(target, index + 2))}
     </div>
   );
 }
@@ -2311,8 +2305,7 @@ function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder
             <span className="muted">{placeholder}</span>
           ) : (
             <>
-              {selectedTargets.slice(0, 2).map(target => <span key={target.id} className="node-select-chip">{target.name}</span>)}
-              {selectedTargets.length > 2 && <span className="node-select-count">+{selectedTargets.length - 2}개</span>}
+              {selectedTargets.map(target => <span key={target.id} className="node-select-chip" title={target.name}>{target.name}</span>)}
             </>
           )}
         </span>
@@ -2328,13 +2321,12 @@ function NodeMultiSelect({ targets = [], selectedIds = [], onChange, placeholder
 
           {selectedTargets.length > 0 && (
             <div className="node-multiselect-selected">
-              {selectedTargets.slice(0, 6).map(target => (
+              {selectedTargets.map(target => (
                 <span key={target.id} className="node-select-chip removable" title={target.name}>
                   {target.name}
                   <button type="button" aria-label={`${target.name} 선택 해제`} onClick={() => remove(target.id)}>×</button>
                 </span>
               ))}
-              {selectedTargets.length > 6 && <span className="node-select-count">+{selectedTargets.length - 6}개</span>}
             </div>
           )}
 
