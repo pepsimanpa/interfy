@@ -772,7 +772,7 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
             me={me}
           />
         )}
-        {activePanel === 'groups' && <ExportPanel api={api} project={project} labels={labels} integrationTargets={integrationTargets} />}
+        {activePanel === 'groups' && <ExportPanel api={api} project={project} labels={labels} integrationTargets={integrationTargets} onOpenPartialUpdate={() => changePanel('partialUpdate')} />}
         {activePanel === 'history' && <HistoryPanel api={api} projectId={projectId} history={history} backups={backups} backupEvents={backupEvents} onReload={async () => { await Promise.all([loadHistory(), loadBackups(), loadBackupEvents()]); }} onRestored={refreshAll} />}
         {activePanel === 'account' && <AccountPanel api={api} me={me} onLogout={onLogout} />}
       </main>
@@ -4072,7 +4072,10 @@ function HistoryDetail({ history }) {
   );
 }
 
-function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
+function ExportPanel({ api, project, labels = [], integrationTargets = [], onOpenPartialUpdate }) {
+  const [partnerTargetIds, setPartnerTargetIds] = useState([]);
+  const [partnerBusy, setPartnerBusy] = useState(false);
+  const [partnerNotice, setPartnerNotice] = useState('');
   const [selectedLabelId, setSelectedLabelId] = useState(labels[0]?.id ? String(labels[0].id) : '');
   const [selectedTargetId, setSelectedTargetId] = useState(integrationTargets[0]?.id ? String(integrationTargets[0].id) : '');
   const [targetDirection, setTargetDirection] = useState('tx');
@@ -4115,6 +4118,40 @@ function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadPartnerJson() {
+    if (!partnerTargetIds.length || partnerBusy) return;
+    setPartnerBusy(true);
+    setPartnerNotice('');
+    try {
+      const response = await fetch(`${API_BASE}/projects/${project.id}/collaboration/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ target_ids: partnerTargetIds }),
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`HTTP ${response.status}: ${error}`);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${project.acronym || project.name || 'interfy'}-partner-package.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setPartnerNotice(`선택한 ${partnerTargetIds.length}개 노드의 작업 패키지를 저장했습니다.`);
+    } catch (error) {
+      setPartnerNotice(`내보내기 실패: ${error?.message || error}`);
+    } finally {
+      setPartnerBusy(false);
+    }
+  }
+
   const selectedLabel = labels.find(label => String(label.id) === String(selectedLabelId));
   const selectedTarget = integrationTargets.find(target => String(target.id) === String(selectedTargetId));
   const targetDirectionText = targetDirection === 'rx' ? '수신 노드' : targetDirection === 'all' ? '송수신 전체' : '송신 노드';
@@ -4130,6 +4167,38 @@ function ExportPanel({ api, project, labels = [], integrationTargets = [] }) {
           <button onClick={() => downloadExport(`/projects/${project.id}/export/csharp`, `${project.acronym || project.name}.cs`)}><Download size={16}/> 프로젝트 전체 .cs</button>
           <button onClick={() => downloadExport(`/projects/${project.id}/project-json`, `${project.acronym || project.name}.json`)}><Download size={16}/> 프로젝트 JSON</button>
         </div>
+      </div>
+
+      <div className="card span-3">
+        <div className="card-title">
+          <div>
+            <h2>협력사 오프라인 작업 패키지</h2>
+            <p>담당 노드를 여러 개 선택해 관련 송수신 메시지와 참조 STRUCT/ENUM을 JSON으로 내보냅니다. 협력사는 HTML 편집기에서 수정하고 JSON을 회신합니다.</p>
+          </div>
+        </div>
+        <div className="partner-export-targets">
+          {integrationTargets.map(target => (
+            <label key={target.id} className="partner-export-target">
+              <input type="checkbox" checked={partnerTargetIds.includes(target.id)} onChange={event => {
+                const id = target.id;
+                setPartnerTargetIds(prev => event.target.checked ? [...prev, id] : prev.filter(value => value !== id));
+              }} />
+              <span>{target.name}</span>
+            </label>
+          ))}
+          {!integrationTargets.length && <p className="muted small">먼저 인터페이스 설계에서 노드를 등록하세요.</p>}
+        </div>
+        <div className="button-row partner-export-actions">
+          <button type="button" className="ghost" onClick={() => setPartnerTargetIds(integrationTargets.map(target => target.id))}>전체 선택</button>
+          <button type="button" className="ghost" onClick={() => setPartnerTargetIds([])}>선택 해제</button>
+          <button type="button" disabled={!partnerTargetIds.length || partnerBusy} onClick={downloadPartnerJson}>
+            <Download size={16}/> {partnerBusy ? '생성 중...' : `선택한 ${partnerTargetIds.length}개 노드 JSON 내보내기`}
+          </button>
+          <a className="partner-export-download" href="/Interfy-Partner-Editor.html" download="Interfy-Partner-Editor.html"><Download size={16}/> 오프라인 HTML 편집기</a>
+          <button type="button" className="ghost" onClick={onOpenPartialUpdate}><Upload size={16}/> 수정 JSON 부분 업데이트</button>
+        </div>
+        <p className="muted small">HTML은 모든 업체에 공통으로 전달하고 JSON만 선택한 노드 기준으로 나눠 주세요. 기존 부분 업데이트의 필드·프로토콜·송수신 반영 방식을 선택해 적용할 수 있습니다.</p>
+        {partnerNotice && <p className="partner-export-notice">{partnerNotice}</p>}
       </div>
 
       <div className="card span-3">
