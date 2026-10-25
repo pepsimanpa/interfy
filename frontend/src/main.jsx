@@ -1639,6 +1639,55 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
   const denseOverview = !focusView && integrationTargets.length > 6;
   const [hoveredNodeId, setHoveredNodeId] = useState(null);
   const [nodeTooltipPosition, setNodeTooltipPosition] = useState(null);
+  const [nodePaneWidth, setNodePaneWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('interfy-node-view-pane-width'));
+    return Number.isFinite(saved) && saved >= 180 && saved <= 460 ? saved : 190;
+  });
+  const [resizingNodePane, setResizingNodePane] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('interfy-node-view-pane-width', String(nodePaneWidth));
+  }, [nodePaneWidth]);
+
+  function beginNodePaneResize(event) {
+    event.preventDefault();
+    const shell = event.currentTarget.parentElement;
+    if (!shell) return;
+
+    const rect = shell.getBoundingClientRect();
+    setResizingNodePane(true);
+    document.body.classList.add('message-pane-resizing');
+
+    const onPointerMove = moveEvent => {
+      const maxWidth = Math.max(180, Math.min(460, rect.width - 360));
+      const nextWidth = moveEvent.clientX - rect.left;
+      setNodePaneWidth(Math.min(maxWidth, Math.max(180, nextWidth)));
+    };
+    const onPointerUp = () => {
+      setResizingNodePane(false);
+      document.body.classList.remove('message-pane-resizing');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+  }
+
+  function handleNodePaneResizeKeyDown(event) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setNodePaneWidth(value => Math.max(180, value - 10));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setNodePaneWidth(value => Math.min(460, value + 10));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setNodePaneWidth(190);
+    }
+  }
 
   function compactDeviceName(value, maxLength = 10) {
     const text = String(value || '');
@@ -1663,13 +1712,33 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
   }
 
   return (
-    <section className="design-upper">
+    <section
+      className="design-upper node-centered-upper"
+      style={{ gridTemplateColumns: `${nodePaneWidth}px 7px minmax(0, 1fr)` }}
+    >
       <aside className="design-device-pane">
         <div className="design-pane-title"><strong>노드</strong></div>
         <button type="button" className={!selectedDeviceId && !selectedRelationKey && !unlinkedOnly ? 'design-device active' : 'design-device'} onClick={onShowAll}><Layers size={14}/><span>전체</span></button>
         {integrationTargets.map(target => <button type="button" key={target.id} title={target.description ? `${target.name}\n${target.description}\n\n더블클릭: 노드 수정` : `${target.name}\n\n더블클릭: 노드 수정`} className={Number(selectedDeviceId) === Number(target.id) ? 'design-device active' : 'design-device'} onClick={() => onSelectDevice(target.id)} onDoubleClick={(event) => { event.preventDefault(); onEditNode?.(target); }}><span className="device-dot"/><span>{target.name}</span></button>)}
         <button type="button" className={unlinkedOnly ? 'design-device warning active' : 'design-device warning'} onClick={onShowUnlinked}><span className="device-dot hollow"/><span>미연결</span><em>{unlinkedCount}</em></button>
       </aside>
+
+      <div
+        className={`design-message-pane-resizer ${resizingNodePane ? 'active' : ''}`}
+        role="separator"
+        aria-label="노드 목록 너비 조절"
+        aria-orientation="vertical"
+        aria-valuemin={180}
+        aria-valuemax={460}
+        aria-valuenow={Math.round(nodePaneWidth)}
+        tabIndex={0}
+        title="드래그하여 노드 목록 너비 조절 · 더블클릭하면 기본 너비"
+        onPointerDown={beginNodePaneResize}
+        onDoubleClick={() => setNodePaneWidth(190)}
+        onKeyDown={handleNodePaneResizeKeyDown}
+      >
+        <span />
+      </div>
 
       <div className="design-canvas-pane">
         <div className="design-toolbar">
