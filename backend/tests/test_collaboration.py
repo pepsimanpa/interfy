@@ -141,6 +141,7 @@ class CollaborationTests(unittest.TestCase):
         edited["struct_name"] = "T_STATUS_NEW"
         planned = _message_rename_plan(self.db, self.project.id, pack)
         self.assertEqual(len(planned["message_renames"]), 1)
+        self.assertEqual(_message_delete_plan(self.db, self.project.id, pack)["message_deletions"], [])
         result = asyncio.run(apply_partner_message_renames(
             self.project.id, self.upload(pack), self.db, self.user
         ))
