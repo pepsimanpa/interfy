@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
-from app.models import IntegrationTarget, Message, MessageTxTargetItem, Project, ProjectBackup, User
-from app.routers.collaboration import build_partner_package, _node_plan, apply_partner_nodes
+from app.models import IntegrationTarget, Message, MessageField, MessageTxTargetItem, Project, ProjectBackup, User
+from app.routers.collaboration import build_partner_package, _node_plan, apply_partner_nodes, _message_delete_plan, _message_rename_plan, apply_partner_message_renames, apply_partner_message_deletions
 from app.routers.project_json import export_project_json
 
 
@@ -124,6 +124,72 @@ class CollaborationTests(unittest.TestCase):
         self.assertEqual(result["updated_count"], 1)
         self.assertEqual(_node_plan(self.db, self.project.id, pack)["node_actions"], [])
         self.assertEqual(self.db.query(IntegrationTarget).count(), 2)
+
+    def test_message_struct_rename_preserves_reference_identity(self):
+        node = self.node("AUV")
+        status = self.message("T_STATUS")
+        wrapper = self.message("T_WRAPPER")
+        self.db.add_all([
+            MessageTxTargetItem(message_id=status.id, target_id=node.id),
+            MessageField(message_id=wrapper.id, name="payload", variable_name="payload",
+                         type="T_STATUS", type_kind="MESSAGE", ref_message_id=status.id),
+        ])
+        self.db.commit()
+        pack = self.package(["AUV"], {"auv": node.id})
+        # Referenced types are part of the package, including their stable IDs.
+        edited = next(item for item in pack["messages"] if item["struct_name"] == "T_STATUS")
+        edited["struct_name"] = "T_STATUS_NEW"
+        planned = _message_rename_plan(self.db, self.project.id, pack)
+        self.assertEqual(len(planned["message_renames"]), 1)
+        result = asyncio.run(apply_partner_message_renames(
+            self.project.id, self.upload(pack), self.db, self.user
+        ))
+        self.assertEqual(result["renamed_count"], 1)
+        self.db.refresh(status)
+        self.assertEqual(status.struct_name, "T_STATUS_NEW")
+        ref = self.db.query(MessageField).one()
+        self.assertEqual(ref.ref_message_id, status.id)
+        self.assertEqual(ref.type, "T_STATUS_NEW")
+        self.assertEqual(_message_rename_plan(self.db, self.project.id, pack)["message_renames"], [])
+
+    def test_deleted_message_is_detected_and_removed_with_backup(self):
+        node = self.node("AUV")
+        status = self.message("T_STATUS")
+        self.db.add(MessageTxTargetItem(message_id=status.id, target_id=node.id))
+        self.db.commit()
+        pack = self.package(["AUV"], {"auv": node.id})
+        pack["messages"] = []
+        preview = _message_delete_plan(self.db, self.project.id, pack)
+        self.assertEqual(len(preview["message_deletions"]), 1)
+        self.assertEqual(preview["blockers"], [])
+        result = asyncio.run(apply_partner_message_deletions(
+            self.project.id, self.upload(pack), self.db, self.user
+        ))
+        self.assertEqual(result["deleted_count"], 1)
+        self.assertIsNone(self.db.get(Message, status.id))
+        self.assertEqual(_message_delete_plan(self.db, self.project.id, pack)["message_deletions"], [])
+        self.assertEqual(self.db.get(ProjectBackup, result["backup_id"]).kind, "AUTO_BEFORE_MERGE")
+
+    def test_message_deletion_blocked_when_other_message_references_it(self):
+        node = self.node("AUV")
+        status = self.message("T_STATUS")
+        wrapper = self.message("T_WRAPPER")
+        self.db.add_all([
+            MessageTxTargetItem(message_id=status.id, target_id=node.id),
+            MessageField(message_id=wrapper.id, name="payload", variable_name="payload",
+                         type="T_STATUS", type_kind="MESSAGE", ref_message_id=status.id),
+        ])
+        self.db.commit()
+        pack = self.package(["AUV"], {"auv": node.id})
+        pack["messages"] = []
+        preview = _message_delete_plan(self.db, self.project.id, pack)
+        self.assertTrue(preview["blockers"])
+        with self.assertRaises(HTTPException) as failure:
+            asyncio.run(apply_partner_message_deletions(
+                self.project.id, self.upload(pack), self.db, self.user
+            ))
+        self.assertEqual(failure.exception.status_code, 409)
+        self.assertIsNotNone(self.db.get(Message, status.id))
 
     def test_conflicting_exported_node_is_blocked(self):
         a = self.node("AUV")
