@@ -415,6 +415,17 @@ def _compare_message(existing: dict[str, Any] | None, incoming: dict[str, Any]) 
     return diffs
 
 
+def _check_partner_package_project(data: dict[str, Any], project_id: int) -> None:
+    """Avoid accidentally updating another project with a partner package."""
+    collaboration = data.get("collaboration")
+    if not isinstance(collaboration, dict):
+        return
+    if collaboration.get("format") != "interfy-partner-v1":
+        return
+    if collaboration.get("project_id") != project_id:
+        raise HTTPException(status_code=409, detail="협력사 작업 패키지의 원본 프로젝트가 현재 프로젝트와 다릅니다.")
+
+
 def _load_existing_messages(db: Session, project_id: int) -> list[Message]:
     return (
         db.query(Message)
@@ -568,6 +579,7 @@ async def preview_partial_update(
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
     _data, messages, _targets = await _read_partial_json(file)
+    _check_partner_package_project(_data, project_id)
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
@@ -625,6 +637,7 @@ async def apply_partial_update(
         raise HTTPException(status_code=422, detail="업데이트할 메시지를 하나 이상 선택하세요.")
 
     _data, incoming_messages, integration_targets = await _read_partial_json(file)
+    _check_partner_package_project(_data, project_id)
     overrides = _parse_infocode_overrides(infocode_overrides)
     _apply_infocode_overrides(incoming_messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
