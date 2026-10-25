@@ -431,7 +431,6 @@ td .array-size-label { margin: 0; }
   box-shadow: none;
 }
 .message-device-more:hover { background: #dbeafe; filter: none; }
-.message-device-more.collapse { background: #f1f5f9; border-color: #d7dfef; color: #64748b; }
 
 /* Group rows and label export */
 .group-row-list { display: grid; gap: 14px; }
@@ -1875,7 +1874,6 @@ body.message-pane-resizing * { cursor: col-resize !important; }
 }
 :root[data-theme="dark"] .message-device-more { background: #173b5c; border-color: #255a85; color: #9cdcfe; }
 :root[data-theme="dark"] .message-device-more:hover { background: #1e4d73; }
-:root[data-theme="dark"] .message-device-more.collapse { background: #2d2d30; border-color: #454545; color: #9d9d9d; }
 :root[data-theme="dark"] .node-multiselect-trigger,
 :root[data-theme="dark"] .node-multiselect-popover {
   background: #252526;
