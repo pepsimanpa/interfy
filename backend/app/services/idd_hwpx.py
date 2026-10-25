@@ -150,11 +150,12 @@ def _table(table, ids, table_template):
 
     # A table is a control embedded in a paragraph/run in HWPX.
     p = etree.Element("{%s}p" % HP, {
-        "id": str(next(ids)), "paraPrIDRef": "0", "styleIDRef": "0",
+        "id": str(next(ids)), "paraPrIDRef": "2", "styleIDRef": "0",
         "pageBreak": "0", "columnBreak": "0", "merged": "0",
     })
-    run = etree.SubElement(p, "{%s}run" % HP, {"charPrIDRef": "0"})
+    run = etree.SubElement(p, "{%s}run" % HP, {"charPrIDRef": "27"})
     run.append(tbl)
+    etree.SubElement(run, "{%s}t" % HP)
     return p
 
 
