@@ -2488,112 +2488,115 @@ function MergeToolDialog({ kind, api, projectId, items = [], onClose, onMerged }
           <input autoFocus value={query} placeholder={isMessage ? '메시지 이름/용도 검색...' : '노드 이름/설명 검색...'} onChange={event => setQuery(event.target.value)} />
         </div>
 
-        <div className="merge-picker-head">
-          <strong>선택 {selectedIds.size}개</strong>
-          <span>체크 후 대표 항목을 지정하세요.</span>
-        </div>
-
-        <div className="merge-picker-list">
-          {filteredItems.map(item => {
-            const id = Number(item.id);
-            const selected = selectedIds.has(id);
-            const isTarget = Number(targetId) === id;
-            return (
-              <div key={item.id} className={`merge-picker-row ${selected ? 'selected' : ''} ${isTarget ? 'representative' : ''}`}>
-                <input type="checkbox" checked={selected} onChange={() => toggleItem(id)} />
-                <button type="button" className="merge-picker-main" onClick={() => toggleItem(id)}>
-                  <strong>{itemTitle(item)}</strong>
-                  <span>{itemDetail(item)}</span>
-                </button>
-                <label className={selected ? 'merge-representative-choice enabled' : 'merge-representative-choice'}>
-                  <input type="radio" name={`${kind}-merge-target`} checked={isTarget} disabled={!selected} onChange={() => chooseRepresentative(id)} />
-                  <span>대표</span>
-                </label>
-              </div>
-            );
-          })}
-          {!filteredItems.length && <div className="merge-empty">조건에 맞는 항목이 없습니다.</div>}
-        </div>
-
-        {localError && <div className="merge-error">{localError}</div>}
-
-        {preview && (
-          <div className="merge-preview">
-            <div className="merge-preview-title">
-              <strong>머지 미리보기</strong>
-              <span>{preview.target?.struct_name || preview.target?.name} 기준</span>
-            </div>
-
-            {!isMessage ? (
-              <>
-              <div className="merge-summary-grid">
-                <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
-                <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
-                <div><span>송신 이동</span><strong>{preview.summary?.tx_move_count || 0}</strong></div>
-                <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
-                <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
-              </div>
-                {(preview.affected_messages || []).length > 0 && (
-                  <div className="merge-preview-list">
-                    <strong>송수신이 변경되는 메시지</strong>
-                    {(preview.affected_messages || []).slice(0, 12).map(message => (
-                      <span key={message.id}>{message.struct_name}{message.name ? ` · ${message.name}` : ''}</span>
-                    ))}
-                    {(preview.affected_messages || []).length > 12 && <em>외 {preview.affected_messages.length - 12}건</em>}
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="merge-summary-grid">
-                  <div><span>삭제될 메시지</span><strong>{preview.summary?.source_count || 0}</strong></div>
-                  <div><span>프로토콜 추가</span><strong>{preview.summary?.protocol_add_count || 0}</strong></div>
-                  <div><span>송신 노드 추가</span><strong>{preview.summary?.tx_add_count || 0}</strong></div>
-                  <div><span>수신 노드 추가</span><strong>{preview.summary?.rx_add_count || 0}</strong></div>
-                  <div><span>필드 추가</span><strong>{preview.summary?.field_copy_count || preview.summary?.enum_copy_count || 0}</strong></div>
-                  <div><span>참조 변경</span><strong>{preview.summary?.reference_redirect_count || 0}</strong></div>
-                </div>
-
-                {preview.merged_protocol && (
-                  <div className="merge-preview-row"><span>최종 프로토콜</span><strong>{preview.merged_protocol}</strong></div>
-                )}
-
-                {(preview.field_actions || []).some(item => item.action === 'COPY') && (
-                  <div className="merge-preview-list">
-                    <strong>추가될 필드</strong>
-                    {(preview.field_actions || []).filter(item => item.action === 'COPY').slice(0, 12).map(item => (
-                      <span key={item.source_field_id}>{item.source_message}.{item.source_name} → <b>{item.target_name}</b></span>
-                    ))}
-                    {(preview.field_actions || []).filter(item => item.action === 'COPY').length > 12 && <em>외 {(preview.field_actions || []).filter(item => item.action === 'COPY').length - 12}건</em>}
-                  </div>
-                )}
-
-                {(preview.reference_redirects || []).length > 0 && (
-                  <div className="merge-preview-list">
-                    <strong>참조 변경 대상</strong>
-                    {(preview.reference_redirects || []).slice(0, 12).map(item => (
-                      <span key={item.field_id}>{item.owner_struct_name || item.message_id}.{item.field_name} → {preview.target?.struct_name}</span>
-                    ))}
-                    {(preview.reference_redirects || []).length > 12 && <em>외 {preview.reference_redirects.length - 12}건</em>}
-                  </div>
-                )}
-
-                {(preview.discarded_metadata || []).some(item => item.infocode || item.period) && (
-                  <div className="merge-warning">
-                    대표 메시지의 정보코드·주기를 유지합니다. 머지되는 메시지의 정보코드/주기는 제거됩니다.
-                  </div>
-                )}
-              </>
-            )}
-
-            {(preview.blockers || []).length > 0 && (
-              <div className="merge-blockers">
-                <strong>머지할 수 없는 항목이 있습니다.</strong>
-                {(preview.blockers || []).map((blocker, index) => <span key={index}>{blocker}</span>)}
-              </div>
-            )}
+        <div className="merge-modal-scroll" role="region" aria-label="머지 선택 및 미리보기" tabIndex={0}>
+          <div className="merge-picker-head">
+            <strong>선택 {selectedIds.size}개</strong>
+            <span>체크 후 대표 항목을 지정하세요.</span>
           </div>
-        )}
+
+          <div className="merge-picker-list">
+            {filteredItems.map(item => {
+              const id = Number(item.id);
+              const selected = selectedIds.has(id);
+              const isTarget = Number(targetId) === id;
+              return (
+                <div key={item.id} className={`merge-picker-row ${selected ? 'selected' : ''} ${isTarget ? 'representative' : ''}`}>
+                  <input type="checkbox" checked={selected} onChange={() => toggleItem(id)} />
+                  <button type="button" className="merge-picker-main" onClick={() => toggleItem(id)}>
+                    <strong>{itemTitle(item)}</strong>
+                    <span>{itemDetail(item)}</span>
+                  </button>
+                  <label className={selected ? 'merge-representative-choice enabled' : 'merge-representative-choice'}>
+                    <input type="radio" name={`${kind}-merge-target`} checked={isTarget} disabled={!selected} onChange={() => chooseRepresentative(id)} />
+                    <span>대표</span>
+                  </label>
+                </div>
+              );
+            })}
+            {!filteredItems.length && <div className="merge-empty">조건에 맞는 항목이 없습니다.</div>}
+          </div>
+
+          {localError && <div className="merge-error">{localError}</div>}
+
+          {preview && (
+            <div className="merge-preview">
+              <div className="merge-preview-title">
+                <strong>머지 미리보기</strong>
+                <span>{preview.target?.struct_name || preview.target?.name} 기준</span>
+              </div>
+
+              {!isMessage ? (
+                <>
+                <div className="merge-summary-grid">
+                  <div><span>삭제될 노드</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                  <div><span>영향 메시지</span><strong>{preview.summary?.affected_message_count || 0}</strong></div>
+                  <div><span>송신 이동</span><strong>{preview.summary?.tx_move_count || 0}</strong></div>
+                  <div><span>수신 이동</span><strong>{preview.summary?.rx_move_count || 0}</strong></div>
+                  <div><span>중복 연결 정리</span><strong>{preview.summary?.duplicate_link_count || 0}</strong></div>
+                </div>
+                  {(preview.affected_messages || []).length > 0 && (
+                    <div className="merge-preview-list">
+                      <strong>송수신이 변경되는 메시지</strong>
+                      {(preview.affected_messages || []).slice(0, 12).map(message => (
+                        <span key={message.id}>{message.struct_name}{message.name ? ` · ${message.name}` : ''}</span>
+                      ))}
+                      {(preview.affected_messages || []).length > 12 && <em>외 {preview.affected_messages.length - 12}건</em>}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="merge-summary-grid">
+                    <div><span>삭제될 메시지</span><strong>{preview.summary?.source_count || 0}</strong></div>
+                    <div><span>프로토콜 추가</span><strong>{preview.summary?.protocol_add_count || 0}</strong></div>
+                    <div><span>송신 노드 추가</span><strong>{preview.summary?.tx_add_count || 0}</strong></div>
+                    <div><span>수신 노드 추가</span><strong>{preview.summary?.rx_add_count || 0}</strong></div>
+                    <div><span>필드 추가</span><strong>{preview.summary?.field_copy_count || preview.summary?.enum_copy_count || 0}</strong></div>
+                    <div><span>참조 변경</span><strong>{preview.summary?.reference_redirect_count || 0}</strong></div>
+                  </div>
+
+                  {preview.merged_protocol && (
+                    <div className="merge-preview-row"><span>최종 프로토콜</span><strong>{preview.merged_protocol}</strong></div>
+                  )}
+
+                  {(preview.field_actions || []).some(item => item.action === 'COPY') && (
+                    <div className="merge-preview-list">
+                      <strong>추가될 필드</strong>
+                      {(preview.field_actions || []).filter(item => item.action === 'COPY').slice(0, 12).map(item => (
+                        <span key={item.source_field_id}>{item.source_message}.{item.source_name} → <b>{item.target_name}</b></span>
+                      ))}
+                      {(preview.field_actions || []).filter(item => item.action === 'COPY').length > 12 && <em>외 {(preview.field_actions || []).filter(item => item.action === 'COPY').length - 12}건</em>}
+                    </div>
+                  )}
+
+                  {(preview.reference_redirects || []).length > 0 && (
+                    <div className="merge-preview-list">
+                      <strong>참조 변경 대상</strong>
+                      {(preview.reference_redirects || []).slice(0, 12).map(item => (
+                        <span key={item.field_id}>{item.owner_struct_name || item.message_id}.{item.field_name} → {preview.target?.struct_name}</span>
+                      ))}
+                      {(preview.reference_redirects || []).length > 12 && <em>외 {preview.reference_redirects.length - 12}건</em>}
+                    </div>
+                  )}
+
+                  {(preview.discarded_metadata || []).some(item => item.infocode || item.period) && (
+                    <div className="merge-warning">
+                      대표 메시지의 정보코드·주기를 유지합니다. 머지되는 메시지의 정보코드/주기는 제거됩니다.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {(preview.blockers || []).length > 0 && (
+                <div className="merge-blockers">
+                  <strong>머지할 수 없는 항목이 있습니다.</strong>
+                  {(preview.blockers || []).map((blocker, index) => <span key={index}>{blocker}</span>)}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>
 
         <p className="merge-auto-backup-note">머지 실행 직전에 복구 가능한 프로젝트 백업을 자동 생성합니다.</p>
         <div className="merge-modal-actions">
