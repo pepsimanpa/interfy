@@ -2210,7 +2210,7 @@ function MessageDevices({ targets = [] }) {
   if (!targets.length) return <span className="muted small">-</span>;
 
   const hiddenCount = Math.max(0, targets.length - 2);
-  const fullTitle = targets.map(target => target.name).join('\\n');
+  const fullTitle = targets.map(target => target.name).join('\n');
   const firstTargets = targets.slice(0, 2);
   const remainingTargets = targets.slice(2);
 
