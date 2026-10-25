@@ -2067,12 +2067,26 @@ body.message-pane-resizing * { cursor: col-resize !important; }
   max-height: min(820px, calc(100vh - 48px));
   min-height: 0;
   padding: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(160px, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 0;
   overflow: hidden;
   box-shadow: 0 24px 70px rgba(15, 23, 42, .26);
 }
+/* Keep the action footer visible even when the merge preview is very long. */
+.merge-modal-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.merge-modal-head,
+.merge-search,
+.merge-auto-backup-note,
+.merge-modal-actions { flex-shrink: 0; }
 .merge-modal-head {
   padding: 16px 18px 12px;
   display: flex;
@@ -2218,9 +2232,25 @@ body.message-pane-resizing * { cursor: col-resize !important; }
 }
 .merge-summary-grid span { color: #64748b; font-size: 10px; }
 .merge-summary-grid strong { font-size: 14px; }
-.merge-preview-list { display: grid; gap: 3px; }
+.merge-preview-list {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 180px;
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .merge-preview-list > strong { font-size: 11px; }
-.merge-preview-list > span { font-size: 10.5px; color: #475569; overflow-wrap: anywhere; }
+.merge-preview-list > span {
+  width: max-content;
+  max-width: none;
+  font-size: 10.5px;
+  color: #475569;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
 .merge-preview-list > em { color: #64748b; font-size: 10px; font-style: normal; }
 .merge-modal-actions {
   padding: 10px 14px 14px;
