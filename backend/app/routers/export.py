@@ -5,6 +5,7 @@ from ..database import get_db
 from ..models import Project, Message, MessageField, MessageGroup, MessageLabel, IntegrationTarget, User
 from ..auth import get_current_user
 from ..services.exporters import render_header, render_idl, render_csharp, to_macro_name
+from ..services.idd_docx import render_idd_docx
 from .project_json import export_project_json as export_project_json_impl
 
 router = APIRouter(tags=["export"])
@@ -96,6 +97,32 @@ def export_project_json_alias(project_id: int, timezone: str | None = None, db: 
     # Compatibility route registered in the export router so the JSON button works
     # even when only export routes are loaded by an older container/image.
     return export_project_json_impl(project_id, db, current_user)
+
+
+@router.get("/projects/{project_id}/export/idd-docx")
+def export_project_idd_docx(project_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """IDD 3.1/3.2 Word report; no inferred internal/external classifications."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    messages = (
+        db.query(Message)
+        .options(
+            joinedload(Message.fields).joinedload(MessageField.ref_message),
+            joinedload(Message.tx_targets),
+            joinedload(Message.rx_targets),
+        )
+        .filter(Message.project_id == project_id)
+        .order_by(Message.order_index, Message.id)
+        .all()
+    )
+    document = render_idd_docx(project, messages)
+    filename = quote(safe_filename_part(project.acronym or project.name) + "_IDD.docx")
+    return Response(
+        content=document,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename*=UTF-8''" + filename},
+    )
 
 
 @router.get("/projects/{project_id}/export/header")
