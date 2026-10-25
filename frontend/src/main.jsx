@@ -2551,6 +2551,8 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [fieldMode, setFieldMode] = useState('MERGE');
   const [protocolMode, setProtocolMode] = useState('MERGE');
   const [relationMode, setRelationMode] = useState('MERGE');
+  const [nodePreview, setNodePreview] = useState(null);
+  const [partnerPackage, setPartnerPackage] = useState(false);
 
   const rows = preview?.messages || [];
   const visibleRows = changedOnly ? rows.filter(row => row.status !== 'SAME') : rows;
@@ -2598,6 +2600,14 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     }
   }
 
+  async function previewPartnerNodes(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/nodes/preview`, formData);
+    setNodePreview(result);
+    return result;
+  }
+
   async function chooseFile(event) {
     const nextFile = event.target.files?.[0];
     event.target.value = '';
@@ -2605,7 +2615,51 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
 
     setInfocodeOverrides({});
     setConflictEditor(null);
-    await previewFile(nextFile, {}, false);
+    setNodePreview(null);
+    setPartnerPackage(false);
+    let isPartner = false;
+    try {
+      const parsed = JSON.parse(await nextFile.text());
+      isPartner = parsed?.collaboration?.format === 'interfy-partner-v1';
+    } catch (_) {
+      // Let the server return the exact JSON validation error.
+    }
+    setPartnerPackage(isPartner);
+    const nextMode = isPartner ? 'REPLACE' : 'MERGE';
+    setFieldMode(nextMode);
+    setProtocolMode(nextMode);
+    setRelationMode(nextMode);
+    try {
+      await previewFile(nextFile, {}, false, nextMode, nextMode, nextMode);
+      if (isPartner) await previewPartnerNodes(nextFile);
+    } catch (error) {
+      setNotice(`파일 미리보기 실패: ${error?.message || error}`);
+    }
+  }
+
+  async function applyPartnerNodes() {
+    if (!file || !nodePreview || !(nodePreview.node_actions || []).length || (nodePreview.blockers || []).length) return;
+    const deletes = (nodePreview.node_actions || []).filter(action => action.action === 'DELETE');
+    const message = `협력사 작업 패키지의 노드 변경 ${nodePreview.node_actions.length}건을 반영할까요?` +
+      (deletes.length ? `\n삭제 노드 ${deletes.length}건의 기존 송수신 관계가 제거됩니다.` : '') +
+      '\n반영 직전 전체 프로젝트를 자동 백업합니다.';
+    if (!confirm(message)) return;
+
+    setBusy(true);
+    setNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/nodes/apply`, formData);
+      await onApplied?.();
+      await previewPartnerNodes(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`노드 변경 ${result.updated_count}건을 반영했습니다. 나머지 메시지 변경도 미리보기에서 선택해 반영할 수 있습니다.`);
+    } catch (error) {
+      setNotice(`노드 적용 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function toggleChecked(row) {
@@ -2737,6 +2791,39 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
             <div><span>선택</span><strong>{checkedRows.length}</strong></div>
           </div>
 
+          {partnerPackage && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 노드 변경</h3><p>노드 이름·설명 변경, 신규 및 삭제를 메시지와 별도로 검토합니다. 이름 변경 시 기존 메시지의 송수신 연결은 유지됩니다.</p></div>
+              </div>
+              {!nodePreview ? <p className="muted small">노드 변경 미리보기를 불러오는 중이거나 조회하지 못했습니다.</p> : (
+                <>
+                  <div className="partner-node-summary">
+                    <span>신규 {nodePreview.summary?.added || 0}</span>
+                    <span>수정 {nodePreview.summary?.updated || 0}</span>
+                    <span>삭제 {nodePreview.summary?.deleted || 0}</span>
+                  </div>
+                  {(nodePreview.node_actions || []).length > 0 && (
+                    <div className="partner-node-action-list">
+                      {nodePreview.node_actions.map((item, index) => (
+                        <div key={index}>
+                          <strong>{item.action === 'ADD' ? '신규' : item.action === 'UPDATE' ? '수정' : '삭제'}</strong>
+                          <span>{item.before_name && item.before_name !== item.name ? `${item.before_name} → ${item.name}` : item.name}</span>
+                          {item.action === 'DELETE' && <em>송신 {item.tx_count || 0} · 수신 {item.rx_count || 0} 연결 해제</em>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(nodePreview.blockers || []).map((item, index) => <p className="partner-node-error" key={index}>{item}</p>)}
+                  <div className="button-row compact">
+                    <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerNodes(file)}>노드 변경 다시 확인</button>
+                    <button type="button" disabled={busy || !(nodePreview.node_actions || []).length || (nodePreview.blockers || []).length > 0} onClick={applyPartnerNodes}>노드 변경 반영</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="partial-update-toolbar card">
             <label className="inline-check"><input type="checkbox" checked={changedOnly} onChange={e => setChangedOnly(e.target.checked)} /> 변경 항목만 보기</label>
             <div className="partial-update-mode-controls">
@@ -2761,7 +2848,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
                   <option value="REPLACE">JSON 기준 교체</option>
                 </select>
               </label>
-              <span className="partial-update-mode-hint">{fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
+              <span className="partial-update-mode-hint">{partnerPackage ? '협력사 수정본은 교체 모드로 초기 선택됩니다. 메시지 변경은 아래에서 별도 승인하세요.' : fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
             </div>
             <div className="button-row compact">
               <button type="button" className="ghost" onClick={() => selectByStatus('CHANGED')}>변경 전체 선택</button>
