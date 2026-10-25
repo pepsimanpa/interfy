@@ -260,6 +260,7 @@ function createApi(token, setError) {
     return res.text();
   }
   return {
+    reportError: (message) => setError?.(String(message)),
     get: (path) => request(path),
     post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
     postForm: (path, formData) => request(path, { method: 'POST', body: formData }),
@@ -609,13 +610,13 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
   async function createMessage(e) {
     e.preventDefault();
     const definitionName = messageForm.definition_type === 'ENUM' ? 'Enum' : '메시지';
-    if (!isValidIdentifier(messageForm.struct_name)) { alert(`${definitionName} 이름: ${IDENTIFIER_HELP}`); return; }
-    if (!String(messageForm.name || '').trim()) { alert(`${definitionName} 용도를 입력하세요.`); return; }
+    if (!isValidIdentifier(messageForm.struct_name)) { alert(`${definitionName} 이름: ${IDENTIFIER_HELP}`); return false; }
+    if (!String(messageForm.name || '').trim()) { alert(`${definitionName} 용도를 입력하세요.`); return false; }
     if (messageForm.definition_type !== 'ENUM') {
       const infocodeOwner = findInfocodeOwner(messages, messageForm.infocode);
       if (infocodeOwner) {
-        alert(`정보코드는 프로젝트 내에서 중복될 수 없습니다. 이미 사용 중인 메시지: ${generatedNameOf(infocodeOwner)}`);
-        return;
+        api.reportError(`정보코드는 프로젝트 내에서 중복될 수 없습니다. 이미 사용 중인 메시지: ${generatedNameOf(infocodeOwner)}`);
+        return false;
       }
     }
     await api.post(`/projects/${projectId}/messages`, {
@@ -625,6 +626,7 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
     setMessageForm({ definition_type: 'STRUCT', name: '', struct_name: '', period: '', infocode: '', protocol: '', description: '', enum_underlying_type: 'uint32', label_ids: [], tx_target_ids: [], rx_target_ids: [] });
     await Promise.all([loadMessages(false), loadHistory()]);
     setActivePanel('design');
+    return true;
   }
 
   async function selectMessage(messageId, keepDesign = false) {
@@ -1111,8 +1113,8 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   }
 
   async function submitCreate(e) {
-    await onCreateMessage(e);
-    setShowCreate(false);
+    const created = await onCreateMessage(e);
+    if (created) setShowCreate(false);
   }
 
   async function handleCopy(message) {
@@ -3408,7 +3410,7 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
     if (!String(messageForm.name || '').trim()) { alert('메시지 용도를 입력하세요.'); return; }
     const infocodeOwner = findInfocodeOwner(messages, messageForm.infocode, message.id);
     if (infocodeOwner) {
-      alert(`정보코드는 프로젝트 내에서 중복될 수 없습니다. 이미 사용 중인 메시지: ${generatedNameOf(infocodeOwner)}`);
+      api.reportError(`정보코드는 프로젝트 내에서 중복될 수 없습니다. 이미 사용 중인 메시지: ${generatedNameOf(infocodeOwner)}`);
       return;
     }
     await api.patch(`/messages/${message.id}`, { ...messageForm, period: normalizePeriodInput(messageForm.period) });
