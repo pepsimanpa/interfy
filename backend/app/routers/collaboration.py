@@ -328,11 +328,22 @@ def _message_delete_plan(db: Session, project_id: int, data: dict[str, Any]) -> 
         str(row.get("struct_name") or "").lower()
         for row in data.get("messages", [])
     }
+    incoming_ids = {
+        int(row["interfy_id"])
+        for row in data.get("messages", [])
+        if isinstance(row.get("interfy_id"), int)
+    }
     original_by_name = {
         str(row.get("struct_name") or "").lower(): row
         for row in original
     }
-    removed = sorted(set(original_by_name) - incoming_names)
+    # A renamed message is retained by its stable Interfy identity and is
+    # processed by rename-apply, NOT marked as deleted under its old name.
+    removed = sorted(
+        key for key, row in original_by_name.items()
+        if key not in incoming_names
+        and (not isinstance(row.get("interfy_id"), int) or row["interfy_id"] not in incoming_ids)
+    )
     actions = []
     blockers = []
     for key in removed:
