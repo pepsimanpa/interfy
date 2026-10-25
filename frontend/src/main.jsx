@@ -2552,6 +2552,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [protocolMode, setProtocolMode] = useState('MERGE');
   const [relationMode, setRelationMode] = useState('MERGE');
   const [nodePreview, setNodePreview] = useState(null);
+  const [partnerDeletePreview, setPartnerDeletePreview] = useState(null);
   const [partnerPackage, setPartnerPackage] = useState(false);
 
   const rows = preview?.messages || [];
@@ -2608,6 +2609,14 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     return result;
   }
 
+  async function previewPartnerDeletions(nextFile) {
+    const formData = new FormData();
+    formData.append('file', nextFile);
+    const result = await api.postForm(`/projects/${projectId}/collaboration/messages/delete-preview`, formData);
+    setPartnerDeletePreview(result);
+    return result;
+  }
+
   async function chooseFile(event) {
     const nextFile = event.target.files?.[0];
     event.target.value = '';
@@ -2616,6 +2625,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     setInfocodeOverrides({});
     setConflictEditor(null);
     setNodePreview(null);
+    setPartnerDeletePreview(null);
     setPartnerPackage(false);
     let isPartner = false;
     try {
@@ -2631,9 +2641,33 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     setRelationMode(nextMode);
     try {
       await previewFile(nextFile, {}, false, nextMode, nextMode, nextMode);
-      if (isPartner) await previewPartnerNodes(nextFile);
+      if (isPartner) {
+        await previewPartnerNodes(nextFile);
+        await previewPartnerDeletions(nextFile);
+      }
     } catch (error) {
       setNotice(`파일 미리보기 실패: ${error?.message || error}`);
+    }
+  }
+
+  async function applyPartnerDeletions() {
+    if (!file || !partnerDeletePreview || !(partnerDeletePreview.message_deletions || []).length || (partnerDeletePreview.blockers || []).length) return;
+    const names = (partnerDeletePreview.message_deletions || []).map(item => item.struct_name);
+    if (!confirm(`협력사가 삭제한 메시지 ${names.length}개를 실제 프로젝트에서도 삭제할까요?\n\n${names.join(', ')}\n\n관련 필드/관계가 삭제됩니다. 적용 직전 전체 프로젝트가 자동 백업됩니다.`)) return;
+
+    setBusy(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const result = await api.postForm(`/projects/${projectId}/collaboration/messages/delete-apply`, formData);
+      await onApplied?.();
+      await previewPartnerDeletions(file);
+      await previewFile(file, infocodeOverrides, true, fieldMode, protocolMode, relationMode);
+      setNotice(`협력사 메시지 ${result.deleted_count}개를 삭제했습니다. 다른 변경 항목은 별도로 반영할 수 있습니다.`);
+    } catch (error) {
+      setNotice(`메시지 삭제 실패: ${error?.message || error}`);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -2821,6 +2855,23 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {partnerPackage && partnerDeletePreview && (
+            <div className="card partner-node-preview">
+              <div className="card-title">
+                <div><h3>협력사 패키지 · 삭제된 메시지</h3><p>협력사 JSON에서 없어진 메시지만 별도로 검토하고 삭제를 승인할 수 있습니다. 다른 메시지가 참조 중이면 삭제를 차단합니다.</p></div>
+              </div>
+              <div className="partner-node-summary"><span>삭제 후보 {(partnerDeletePreview.message_deletions || []).length}개</span></div>
+              {(partnerDeletePreview.message_deletions || []).map((item, index) => (
+                <p className="muted small" key={index}>{item.struct_name} · 참조 {item.reference_count || 0}건</p>
+              ))}
+              {(partnerDeletePreview.blockers || []).map((text, index) => <p className="partner-node-error" key={index}>{text}</p>)}
+              <div className="button-row compact">
+                <button type="button" className="ghost" disabled={busy} onClick={() => previewPartnerDeletions(file)}>삭제 후보 다시 확인</button>
+                <button type="button" className="danger" disabled={busy || !(partnerDeletePreview.message_deletions || []).length || (partnerDeletePreview.blockers || []).length > 0} onClick={applyPartnerDeletions}>선택된 삭제 후보 일괄 삭제</button>
+              </div>
             </div>
           )}
 
