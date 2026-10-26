@@ -21,7 +21,7 @@
   <sample>
     <hp:tbl id="__TBL_ID__" zOrder="0" numberingType="TABLE" textWrap="TOP_AND_BOTTOM" textFlow="BOTH_SIDES" lock="0" dropcapstyle="None" pageBreak="CELL" repeatHeader="1" rowCnt="__ROW_CNT__" colCnt="4" cellSpacing="0" borderFillIDRef="4" noAdjust="1">
       <hp:sz width="47849" widthRelTo="ABSOLUTE" height="__TBL_HEIGHT__" heightRelTo="ABSOLUTE" protect="0"/>
-      <hp:pos treatAsChar="1" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>
+      <hp:pos treatAsChar="0" affectLSpacing="0" flowWithText="1" allowOverlap="0" holdAnchorAndSO="0" vertRelTo="PARA" horzRelTo="PARA" vertAlign="TOP" horzAlign="LEFT" vertOffset="0" horzOffset="0"/>
       <hp:outMargin left="141" right="141" top="141" bottom="141"/>
       <hp:inMargin left="0" right="0" top="0" bottom="0"/>
       <hp:tr row-type="header">
