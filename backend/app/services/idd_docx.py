@@ -72,14 +72,6 @@ def _relationships(messages):
     return result
 
 
-def _sorted_struct_messages(messages):
-    return sorted(
-        (message for message in messages
-         if _text(getattr(message, "definition_type", "STRUCT")).upper() != "ENUM"),
-        key=lambda m: (getattr(m, "order_index", 0) or 0, getattr(m, "id", 0) or 0),
-    )
-
-
 def _sequenced_data_elements(relations):
     """Build the shared 3.1/3.2 order and one document-wide IE counter.
 
