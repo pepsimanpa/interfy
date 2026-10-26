@@ -63,17 +63,19 @@ def _set_run_text(run, value):
         node.text = part or None
 
 
-def _paragraph(text, ids, *, heading=False):
+def _paragraph(text, ids, *, heading=False, title=False, caption=False):
+    # Every non-table paragraph except the report title is explicitly 11pt.
+    char_style = "10" if title else ("29" if caption else ("28" if heading else "25"))
     p = etree.Element("{%s}p" % HP, {
         "id": str(next(ids)),
-        "paraPrIDRef": "2" if heading else "22",
-        "styleIDRef": "0" if heading else "1",
+        "paraPrIDRef": "18" if caption else ("2" if heading or title else "22"),
+        "styleIDRef": "0" if heading or title else "1",
         "pageBreak": "0",
         "columnBreak": "0",
         "merged": "0",
     })
     run = etree.SubElement(p, "{%s}run" % HP, {
-        "charPrIDRef": "10" if heading else "25",
+        "charPrIDRef": char_style,
     })
     _set_run_text(run, text)
     return p
@@ -142,7 +144,6 @@ def _table(table, ids, table_template, caption_text=None):
         tr.attrib.pop("row-type", None)
         for existing in list(tr.findall("{%s}tc" % HP)):
             tr.remove(existing)
-        prototype = head_cell if is_header else body_cell
         col_index = 0
         while col_index < len(layout):
             cell = docx_row.cells[col_index]
@@ -150,7 +151,14 @@ def _table(table, ids, table_template, caption_text=None):
             while (col_index + span < len(layout)
                    and docx_row.cells[col_index + span]._tc is cell._tc):
                 span += 1
-            tc = deepcopy(prototype)
+            # In the reference IDD, the first three rows shade only the
+            # label cells; field headings (row 4) are shaded throughout.
+            is_label = is_header or (
+                is_data_element and
+                ((row_index == 0 and col_index == 0) or
+                 (row_index in (1, 2) and col_index in (0, 4)))
+            )
+            tc = deepcopy(head_cell if is_label else body_cell)
             combined_width = sum(layout[col_index:col_index + span])
             _fill_cell(tc, "\n".join(p.text for p in cell.paragraphs),
                        row_index, col_index, combined_width, ids)
@@ -167,7 +175,7 @@ def _table(table, ids, table_template, caption_text=None):
         sublist = deepcopy(body_cell.find("{%s}subList" % HP))
         for old in list(sublist):
             sublist.remove(old)
-        caption_p = _paragraph(caption_text, ids)
+        caption_p = _paragraph(caption_text, ids, caption=True)
         sublist.append(caption_p)
         caption.append(sublist)
         # In OWPML the caption follows outMargin and precedes inMargin.
@@ -198,11 +206,10 @@ def _hwpx_section(docx):
             if paragraph.text.startswith("데이터요소 - "):
                 pending_caption = paragraph.text
                 continue
-            is_heading = paragraph.style is not None and (
-                paragraph.style.name.startswith("Heading")
-                or paragraph.style.name.startswith("Title")
-            )
-            root.append(_paragraph(paragraph.text, ids, heading=is_heading))
+            style_name = paragraph.style.name if paragraph.style is not None else ""
+            is_title = style_name.startswith("Title")
+            is_heading = style_name.startswith("Heading")
+            root.append(_paragraph(paragraph.text, ids, heading=is_heading, title=is_title))
         elif child.tag == word_qn("w:tbl"):
             table = Table(child, docx)
             element = _table(table, ids, basic, caption_text=pending_caption)
@@ -214,53 +221,83 @@ def _hwpx_section(docx):
 
 
 def _hwpx_header():
-    """Set HWPX body and table typography without changing DOCX.
+    """Use explicit HWPX character shapes that match the IDD report styles.
 
-    HWPX character heights use hundredths of a point. Apply the 11pt
-    Gothic style both to inline runs and to the underlying normal/body
-    paragraph styles, so Hancom Office can show the same formatting.
+    Font sizes are hundredths of a point (1100=11pt). Use a real, widely
+    available Korean Gothic for normal paragraphs rather than '고딕', which
+    may be an uninstalled family name. The source PDF's table fonts are
+    Dotum (labels) and Batang (values), approximately 10pt and 9pt.
     """
     tree = _asset_xml("Contents/header.xml")
     root = tree.getroot()
-    # Body/caption: Gothic 11pt; table heading: Gothic 10pt;
-    # table contents: Shinmyeongjo 9pt. Existing heading styles stay unchanged.
     fontfaces = root.find(".//{%s}fontfaces" % HH)
     langs = ("HANGUL", "LATIN", "HANJA", "JAPANESE", "OTHER", "SYMBOL", "USER")
-    def set_face(char_pr, requested):
+
+    def set_face(char_pr, family):
         ref = char_pr.find("{%s}fontRef" % HH)
+        if ref is None:
+            raise ValueError("Missing HWPX fontRef")
         for lang in langs:
-            face_group = fontfaces.find("{%s}fontface[@lang='%s']" % (HH, lang))
-            faces = face_group.findall("{%s}font" % HH)
-            matching = next((font for font in faces if font.get("face") == requested), None)
-            if matching is None:
-                matching = etree.SubElement(face_group, "{%s}font" % HH, {
-                    "id": str(len(faces)), "face": requested,
-                    "type": "TTF", "isEmbedded": "0",
+            group = fontfaces.find("{%s}fontface[@lang='%s']" % (HH, lang))
+            existing = group.findall("{%s}font" % HH)
+            entry = next((font for font in existing if font.get("face") == family), None)
+            if entry is None:
+                entry = etree.SubElement(group, "{%s}font" % HH, {
+                    "id": str(len(existing)), "face": family, "type": "TTF",
+                    "isEmbedded": "0",
                 })
-                # A font named simply '고딕' may not be installed; retain the
-                # requested family but specify a common Windows fallback.
-                if requested == "고딕":
-                    etree.SubElement(matching, "{%s}substFont" % HH, {
-                        "face": "맑은 고딕", "type": "TTF",
-                        "isEmbedded": "0", "binaryItemIDRef": "",
-                    })
-                face_group.set("fontCnt", str(len(faces) + 1))
-            ref.set(lang.lower() if lang not in ("HANGUL", "HANJA") else
-                    ("hangul" if lang == "HANGUL" else "hanja"), matching.get("id"))
-    for char_id in ("25", "26", "27"):
-        char_pr = root.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
+                group.set("fontCnt", str(len(existing) + 1))
+            ref.set(lang.lower(), entry.get("id"))
+
+    char_props = root.find(".//{%s}charProperties" % HH)
+    base = char_props.find("{%s}charPr[@id='25']" % HH)
+    if base is None:
+        raise ValueError("Missing base HWPX body character style")
+    for style_id, family, size in (
+        ("25", "맑은 고딕", 11),
+        ("26", "돋움", 10),
+        ("27", "바탕", 9),
+    ):
+        char_pr = char_props.find("{%s}charPr[@id='%s']" % (HH, style_id))
         if char_pr is None:
-            raise ValueError("Missing HWPX character style: " + char_id)
-        char_pr.set("height", {"25": "1100", "26": "1000", "27": "900"}[char_id])
-        set_face(char_pr, "신명조" if char_id == "27" else "고딕")
-    # The original template's named styles '바탕글' and '본문' still
-    # point at 15pt/other-font character shapes unless updated separately.
-    # Set both to our 11pt body character style, preserving heading runs.
+            raise ValueError("Missing HWPX character style " + style_id)
+        char_pr.set("height", str(size * 100))
+        set_face(char_pr, family)
+        # The source table has plain, not bold, Dotum column labels.
+        if style_id == "26":
+            bold = char_pr.find("{%s}bold" % HH)
+            if bold is not None:
+                char_pr.remove(bold)
+
+    for style_id, family, is_bold in (
+        ("28", "맑은 고딕", True),
+        ("29", "돋움", False),
+    ):
+        new_style = deepcopy(base)
+        new_style.set("id", style_id)
+        new_style.set("height", "1100")
+        new_style.set("textColor", "#0000FF")
+        set_face(new_style, family)
+        if is_bold:
+            etree.SubElement(new_style, "{%s}bold" % HH)
+        char_props.append(new_style)
+    char_props.set("itemCnt", str(len(char_props.findall("{%s}charPr" % HH))))
+
     for style_id in ("0", "1"):
         style = root.find(".//{%s}style[@id='%s']" % (HH, style_id))
         if style is None:
-            raise ValueError("Missing HWPX normal/body style: " + style_id)
+            raise ValueError("Missing HWPX normal/body style " + style_id)
         style.set("charPrIDRef", "25")
+
+    # Reference PDF page 14 fills metadata labels and field headings #D6D6D6.
+    # HWPX cell templates use borderFill 9 for shaded and 10 for plain cells.
+    gray_border = root.find(".//{%s}borderFill[@id='9']" % HH)
+    if gray_border is None:
+        raise ValueError("Missing table label borderFill 9")
+    fill = gray_border.find(".//{http://www.hancom.co.kr/hwpml/2011/core}winBrush")
+    if fill is None:
+        raise ValueError("Missing table label fill brush")
+    fill.set("faceColor", "#D6D6D6")
     return etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
 
 
