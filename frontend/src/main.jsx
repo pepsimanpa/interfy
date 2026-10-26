@@ -23,6 +23,7 @@ import {
   UserCircle,
 } from 'lucide-react';
 import './style.css';
+import { nextNodePairSelection, isRelationBetweenNodes, isMessageInRelations } from './nodePair.js';
 
 function resolveApiBase() {
   const configured = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -784,6 +785,7 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
 
 function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels = [], integrationTargets = [], query = '', messageForm, setMessageForm, onCreateMessage, selectedMessage, setSelectedMessage, onCloseSelectedMessage, onSelectMessage, onDeleteMessage, onCopyMessage, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onOpenPartialUpdate, onReload, onDirtyChange }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
+  const [secondaryDeviceId, setSecondaryDeviceId] = useState(null);
   const [selectedRelationKey, setSelectedRelationKey] = useState(null);
   const [viewerMode, setViewerMode] = useState(() => localStorage.getItem('interfy-viewer-mode') === 'message' ? 'message' : 'node');
   const [messageNameQuery, setMessageNameQuery] = useState('');
@@ -906,6 +908,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (nextMode !== 'node' && nextMode !== 'message') return;
     setViewerMode(nextMode);
     setSelectedDeviceId(null);
+    setSecondaryDeviceId(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
     if (nextMode === 'message' && !selectedViewerMessageId && messageViewerMessages[0]) {
@@ -917,6 +920,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedDeviceId(null);
+    setSecondaryDeviceId(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
     setSelectedViewerMessageId(Number(messageId));
@@ -941,25 +945,31 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const selectedRelation = relationMap.find(relation => relation.key === selectedRelationKey) || null;
   const deviceMap = useMemo(() => new Map(integrationTargets.map(target => [Number(target.id), target])), [integrationTargets]);
 
-  // The overview and a selected-device focus view use different layouts.
-  // In focus view, only direct relations of the selected device are drawn.
+  // One node: show all directly connected nodes. Two nodes: show only A↔B links.
   const graphRelations = useMemo(() => {
     if (!selectedDeviceId) return relationMap;
+    if (secondaryDeviceId) {
+      return relationMap.filter(relation => isRelationBetweenNodes(relation, selectedDeviceId, secondaryDeviceId));
+    }
     return relationMap.filter(relation =>
       Number(relation.fromId) === Number(selectedDeviceId) ||
       Number(relation.toId) === Number(selectedDeviceId)
     );
-  }, [relationMap, selectedDeviceId]);
+  }, [relationMap, selectedDeviceId, secondaryDeviceId]);
 
   const graphTargets = useMemo(() => {
     if (!selectedDeviceId) return integrationTargets;
     const visibleIds = new Set([Number(selectedDeviceId)]);
-    graphRelations.forEach(relation => {
-      visibleIds.add(Number(relation.fromId));
-      visibleIds.add(Number(relation.toId));
-    });
+    if (secondaryDeviceId) {
+      visibleIds.add(Number(secondaryDeviceId));
+    } else {
+      graphRelations.forEach(relation => {
+        visibleIds.add(Number(relation.fromId));
+        visibleIds.add(Number(relation.toId));
+      });
+    }
     return integrationTargets.filter(target => visibleIds.has(Number(target.id)));
-  }, [integrationTargets, graphRelations, selectedDeviceId]);
+  }, [integrationTargets, graphRelations, selectedDeviceId, secondaryDeviceId]);
 
   const positions = useMemo(() => {
     const width = 900, height = 390;
@@ -975,6 +985,12 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
         });
       });
     };
+
+    if (selectedDeviceId && secondaryDeviceId) {
+      map.set(Number(selectedDeviceId), { x: 285, y: cy });
+      map.set(Number(secondaryDeviceId), { x: 615, y: cy });
+      return map;
+    }
 
     if (selectedDeviceId) {
       const selected = graphTargets.find(target => Number(target.id) === Number(selectedDeviceId));
@@ -1011,7 +1027,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     placeRing(inner, 185, 78, -Math.PI / 2 + Math.PI / Math.max(inner.length, 1));
     placeRing(outer, 338, 148);
     return map;
-  }, [graphTargets, selectedDeviceId]);
+  }, [graphTargets, selectedDeviceId, secondaryDeviceId]);
 
   const unlinkedMessages = useMemo(() => messages.filter(message => !isEnumDefinition(message) && (!(message.tx_targets || []).length || !(message.rx_targets || []).length)), [messages]);
 
@@ -1023,6 +1039,10 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       if ((message.tx_targets || []).length && (message.rx_targets || []).length) return false;
     } else if (selectedRelation) {
       if (!selectedRelation.messages.some(item => item.id === message.id)) return false;
+    } else if (selectedDeviceId && secondaryDeviceId) {
+      // The message must actually travel between the selected CSCIs,
+      // not merely mention both nodes on the same side of a transmission.
+      if (!isMessageInRelations(message, graphRelations)) return false;
     } else if (selectedDeviceId) {
       if (isEnumDefinition(message)) return false;
       const related = [...(message.tx_targets || []), ...(message.rx_targets || [])].some(target => Number(target.id) === Number(selectedDeviceId));
@@ -1034,7 +1054,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesTextQuery(message, query)) return false;
     if (!messageMatchesNameQuery(message, messageNameQuery)) return false;
     return true;
-  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, protocolFilter, tagFilter, query, messageNameQuery]);
+  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, graphRelations, protocolFilter, tagFilter, query, messageNameQuery]);
 
   const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim() && !messageNameQuery.trim();
 
@@ -1054,19 +1074,29 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       const to = deviceMap.get(Number(selectedRelation.toId));
       return { title: `${from?.name || '노드'} → ${to?.name || '노드'}`, detail: '선택한 송수신 관계의 메시지' };
     }
+    if (selectedDeviceId && secondaryDeviceId) {
+      const first = deviceMap.get(Number(selectedDeviceId));
+      const second = deviceMap.get(Number(secondaryDeviceId));
+      return {
+        title: `${first?.name || '노드'} ↔ ${second?.name || '노드'}`,
+        detail: '선택한 두 노드 사이의 송신·수신 메시지 (양방향)',
+      };
+    }
     if (selectedDeviceId) {
       const device = deviceMap.get(Number(selectedDeviceId));
       return { title: device?.name || '노드', detail: '선택한 노드의 송신 + 수신 메시지' };
     }
     return { title: '전체 메시지', detail: '노드나 관계를 선택하면 이 목록이 자동으로 필터링됩니다.' };
-  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, deviceMap]);
+  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, deviceMap]);
 
   function selectDevice(targetId) {
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
-    setSelectedDeviceId(current => Number(current) === Number(targetId) ? null : Number(targetId));
+    const next = nextNodePairSelection(selectedDeviceId, secondaryDeviceId, targetId);
+    setSelectedDeviceId(next.primaryId);
+    setSecondaryDeviceId(next.secondaryId);
   }
 
   function selectRelation(key) {
@@ -1081,6 +1111,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedDeviceId(null);
+    setSecondaryDeviceId(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
   }
@@ -1089,6 +1120,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedDeviceId(null);
+    setSecondaryDeviceId(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(true);
   }
@@ -1143,7 +1175,12 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       tx_target_ids: (current.tx_target_ids || []).filter(id => Number(id) !== Number(targetId)),
       rx_target_ids: (current.rx_target_ids || []).filter(id => Number(id) !== Number(targetId)),
     }));
-    if (Number(selectedDeviceId) === Number(targetId)) setSelectedDeviceId(null);
+    if (Number(selectedDeviceId) === Number(targetId)) {
+      setSelectedDeviceId(secondaryDeviceId ? Number(secondaryDeviceId) : null);
+      setSecondaryDeviceId(null);
+    } else if (Number(secondaryDeviceId) === Number(targetId)) {
+      setSecondaryDeviceId(null);
+    }
     setSelectedRelationKey(null);
   }
 
@@ -1155,6 +1192,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
 
   async function handleTargetMerged() {
     setSelectedDeviceId(null);
+    setSecondaryDeviceId(null);
     setSelectedRelationKey(null);
     await onReload?.();
   }
@@ -1298,6 +1336,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       relationMap={graphRelations}
       positions={positions}
       selectedDeviceId={selectedDeviceId}
+      secondaryDeviceId={secondaryDeviceId}
       selectedRelationKey={selectedRelationKey}
       protocolFilter={protocolFilter}
       setProtocolFilter={setProtocolFilter}
@@ -1663,7 +1702,7 @@ function MessageCenteredVisualization({ messages = [], messageNameQuery = '', on
   );
 }
 
-function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
+function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, secondaryDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
   // Draw the selected relation last so its line/label is never hidden by another relation.
   const renderRelations = [...relationMap].sort((a, b) => Number(a.key === selectedRelationKey) - Number(b.key === selectedRelationKey));
   const focusView = Boolean(selectedDeviceId);
@@ -1748,9 +1787,9 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
       style={{ gridTemplateColumns: `${nodePaneWidth}px 7px minmax(0, 1fr)` }}
     >
       <aside className="design-device-pane">
-        <div className="design-pane-title"><strong>노드</strong></div>
+        <div className="design-pane-title"><strong>노드</strong><span className="design-node-selection-hint">최대 2개 선택</span></div>
         <button type="button" className={!selectedDeviceId && !selectedRelationKey && !unlinkedOnly ? 'design-device active' : 'design-device'} onClick={onShowAll}><Layers size={14}/><span>전체</span></button>
-        {integrationTargets.map(target => <button type="button" key={target.id} title={target.description ? `${target.name}\n${target.description}\n\n더블클릭: 노드 수정` : `${target.name}\n\n더블클릭: 노드 수정`} className={Number(selectedDeviceId) === Number(target.id) ? 'design-device active' : 'design-device'} onClick={() => onSelectDevice(target.id)} onDoubleClick={(event) => { event.preventDefault(); onEditNode?.(target); }}><span className="device-dot"/><span>{target.name}</span></button>)}
+        {integrationTargets.map(target => <button type="button" key={target.id} title={target.description ? `${target.name}\n${target.description}\n\n클릭: 최대 2개 노드 관계 보기 · 다시 클릭: 해제\n더블클릭: 노드 수정` : `${target.name}\n\n클릭: 최대 2개 노드 관계 보기 · 다시 클릭: 해제\n더블클릭: 노드 수정`} aria-pressed={Number(selectedDeviceId) === Number(target.id) || Number(secondaryDeviceId) === Number(target.id)} className={Number(selectedDeviceId) === Number(target.id) || Number(secondaryDeviceId) === Number(target.id) ? 'design-device active' : 'design-device'} onClick={() => onSelectDevice(target.id)} onDoubleClick={(event) => { event.preventDefault(); onEditNode?.(target); }}><span className="device-dot"/><span>{target.name}</span></button>)}
         <button type="button" className={unlinkedOnly ? 'design-device warning active' : 'design-device warning'} onClick={onShowUnlinked}><span className="device-dot hollow"/><span>미연결</span><em>{unlinkedCount}</em></button>
       </aside>
 
@@ -1780,7 +1819,7 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
             <label><input type="checkbox" checked={showProtocol} onChange={e => setShowProtocol(e.target.checked)} /><span>프로토콜</span></label>
             <label><input type="checkbox" checked={showMessageCount} onChange={e => setShowMessageCount(e.target.checked)} /><span>메시지 수</span></label>
           </div>
-          {focusView && <div className="design-focus-badge">포커스 보기</div>}
+          {focusView && <div className="design-focus-badge">{secondaryDeviceId ? '두 노드 관계' : '포커스 보기'}</div>}
           {denseOverview && !showProtocol && !showMessageCount && <div className="design-density-hint">관계 정보 숨김</div>}
           <div className="design-toolbar-summary"><strong>{visibleTargets.length}</strong>{visibleTargets.length !== integrationTargets.length ? ` / ${integrationTargets.length}` : ''} 노드 · <strong>{relationMap.length}</strong> 관계</div>
           <button type="button" className="ghost design-partial-update-button" onClick={onOpenPartialUpdate}><Upload size={14}/> 부분 업데이트</button>
@@ -1809,9 +1848,14 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
                   {relationLabel && <g className="design-edge-label" transform={`translate(${label.x},${label.y})`}><rect x={-labelWidth / 2} y="-10" width={labelWidth} height="20" rx="10"/><text textAnchor="middle" dy="3.5">{relationLabel}</text></g>}
                 </g>;
               })}
+              {secondaryDeviceId && !renderRelations.length && (
+                <text x="450" y="259" textAnchor="middle" className="design-pair-empty-label">
+                  선택한 두 노드 사이에 연동 메시지가 없습니다.
+                </text>
+              )}
               {visibleTargets.map(target => {
                 const pos = positions.get(Number(target.id)) || { x: 450, y: 195 };
-                const active = Number(selectedDeviceId) === Number(target.id);
+                const active = Number(selectedDeviceId) === Number(target.id) || Number(secondaryDeviceId) === Number(target.id);
                 return <g key={target.id} className={active ? 'design-node active' : 'design-node'} transform={`translate(${pos.x},${pos.y})`} onClick={() => onSelectDevice(target.id)} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); onEditNode?.(target); }} onMouseEnter={event => updateNodeTooltipPosition(event, target.id)} onMouseMove={event => updateNodeTooltipPosition(event, target.id)} onMouseLeave={() => { setHoveredNodeId(null); setNodeTooltipPosition(null); }}>
                   <rect x="-49" y="-17" width="98" height="34" rx="7"/>
                   <text className="design-node-name" textAnchor="middle" y="1">{compactDeviceName(target.name)}</text>
