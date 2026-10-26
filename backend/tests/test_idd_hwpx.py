@@ -4,6 +4,7 @@ Run from backend/: python -m unittest discover -s tests -v
 These tests create and inspect real ZIP/OWPML bytes without Hancom Office.
 """
 import unittest
+import re
 from io import BytesIO
 from types import SimpleNamespace
 from zipfile import ZIP_STORED, ZipFile
@@ -101,7 +102,8 @@ class IddHwpxTests(unittest.TestCase):
             text = " ".join(values)
             self.assertNotIn("연동 노드 구성 (CSCI 송수신 관계)", text)
             self.assertIn("IE-0001(정보보고(MSG_1))", text)
-            self.assertIn("IE-0002(상태보고(MSG_2))", text)
+            self.assertIn("IE-0002(정보보고(MSG_1))", text)
+            self.assertIn("IE-0003(상태보고(MSG_2))", text)
 
             interface_table = next(
                 table for table in section.findall(".//{%s}tbl" % HP)
@@ -113,8 +115,25 @@ class IddHwpxTests(unittest.TestCase):
                 cells = row.findall("{%s}tc" % HP)
                 records.append(["".join(cell.itertext()) for cell in cells])
             self.assertEqual(len(records), 3)
-            self.assertEqual([row[2] for row in records], ["CSU", "CSU", "MDV"])
+            self.assertEqual([row[2] for row in records], ["CSU", "MDV", "CSU"])
+            self.assertEqual([row[6] for row in records], [
+                "IE-0001(정보보고(MSG_1))",
+                "IE-0002(정보보고(MSG_1))",
+                "IE-0003(상태보고(MSG_2))",
+            ])
             self.assertTrue(all(row[1] == "" for row in records))
+            detail_headings = []
+            for paragraph in section.findall("{%s}p" % HP):
+                label = "".join(
+                    t.text or "" for t in paragraph.findall("./{%s}run/{%s}t" % (HP, HP))
+                )
+                if re.match(r"^3\.2\.\d+\.\d+ IE-\d{4}\(", label):
+                    detail_headings.append(label)
+            self.assertEqual(
+                [re.search(r"IE-\d{4}", label).group() for label in detail_headings],
+                ["IE-0001", "IE-0002", "IE-0003"],
+            )
+            self.assertTrue(detail_headings[0].startswith("3.2.1.1 IE-0001("))
 
 
     def test_missing_values_are_blank_and_user_input_is_xml_escaped(self):
