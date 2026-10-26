@@ -23,6 +23,7 @@ import {
   UserCircle,
 } from 'lucide-react';
 import './style.css';
+import { nextNodePairSelection, isRelationBetweenNodes, isMessageInRelations } from './nodePair.js';
 
 function resolveApiBase() {
   const configured = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -948,12 +949,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   const graphRelations = useMemo(() => {
     if (!selectedDeviceId) return relationMap;
     if (secondaryDeviceId) {
-      const first = Number(selectedDeviceId);
-      const second = Number(secondaryDeviceId);
-      return relationMap.filter(relation =>
-        (Number(relation.fromId) === first && Number(relation.toId) === second) ||
-        (Number(relation.fromId) === second && Number(relation.toId) === first)
-      );
+      return relationMap.filter(relation => isRelationBetweenNodes(relation, selectedDeviceId, secondaryDeviceId));
     }
     return relationMap.filter(relation =>
       Number(relation.fromId) === Number(selectedDeviceId) ||
@@ -1046,7 +1042,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     } else if (selectedDeviceId && secondaryDeviceId) {
       // The message must actually travel between the selected CSCIs,
       // not merely mention both nodes on the same side of a transmission.
-      if (!graphRelations.some(relation => relation.messages.some(item => Number(item.id) === Number(message.id)))) return false;
+      if (!isMessageInRelations(message, graphRelations)) return false;
     } else if (selectedDeviceId) {
       if (isEnumDefinition(message)) return false;
       const related = [...(message.tx_targets || []), ...(message.rx_targets || [])].some(target => Number(target.id) === Number(selectedDeviceId));
@@ -1098,20 +1094,9 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
-    const id = Number(targetId);
-    if (!selectedDeviceId) {
-      setSelectedDeviceId(id);
-      setSecondaryDeviceId(null);
-    } else if (id === Number(selectedDeviceId)) {
-      // Clicking the primary node again removes it; keep the other selection.
-      setSelectedDeviceId(secondaryDeviceId ? Number(secondaryDeviceId) : null);
-      setSecondaryDeviceId(null);
-    } else if (id === Number(secondaryDeviceId)) {
-      setSecondaryDeviceId(null);
-    } else {
-      // A third click replaces the second node and retains the first.
-      setSecondaryDeviceId(id);
-    }
+    const next = nextNodePairSelection(selectedDeviceId, secondaryDeviceId, targetId);
+    setSelectedDeviceId(next.primaryId);
+    setSecondaryDeviceId(next.secondaryId);
   }
 
   function selectRelation(key) {
