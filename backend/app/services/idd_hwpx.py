@@ -152,7 +152,7 @@ def _table(table, ids, table_template, caption_text=None):
                 span += 1
             tc = deepcopy(prototype)
             combined_width = sum(layout[col_index:col_index + span])
-            _fill_cell(tc, "\\n".join(p.text for p in cell.paragraphs),
+            _fill_cell(tc, "\n".join(p.text for p in cell.paragraphs),
                        row_index, col_index, combined_width, ids)
             tc.find("{%s}cellSpan" % HP).set("colSpan", str(span))
             tr.append(tc)
