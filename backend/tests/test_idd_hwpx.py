@@ -12,7 +12,7 @@ from docx import Document
 from lxml import etree
 
 from app.services.idd_docx import render_idd_docx
-from app.services.idd_hwpx import HP, HWP_MIMETYPE, render_idd_hwpx
+from app.services.idd_hwpx import HP, HH, HWP_MIMETYPE, render_idd_hwpx
 
 
 def node(name):
@@ -77,6 +77,45 @@ class IddHwpxTests(unittest.TestCase):
                           "위도 <degree>", "& 각도", "명령상태", "-90~90",
                           "프로토콜", "통신방법", "사용자 인터페이스 목록"):
                 self.assertIn(value, section_text)
+
+    def test_hwpx_heading_ten_point_body_nine_point_and_renumbered_messages(self):
+        project = SimpleNamespace(name="예제")
+        messages = [
+            message(1, name="정보보고", tx=("CSU", "MDV")),
+            message(2, name="상태보고", tx=("CSU",)),
+        ]
+        with ZipFile(BytesIO(render_idd_hwpx(project, messages))) as archive:
+            head = etree.fromstring(archive.read("Contents/header.xml"))
+            table_header_style = head.find(".//{%s}charPr[@id='26']" % HH)
+            table_body_style = head.find(".//{%s}charPr[@id='27']" % HH)
+            self.assertEqual(table_header_style.get("height"), "1000")
+            self.assertEqual(table_body_style.get("height"), "900")
+
+            section = etree.fromstring(archive.read("Contents/section0.xml"))
+            headings = section.findall(".//{%s}tbl/{%s}tr[1]//{%s}run" % (HP, HP, HP))
+            bodies = section.findall(".//{%s}tbl/{%s}tr[2]//{%s}run" % (HP, HP, HP))
+            self.assertTrue(headings and bodies)
+            self.assertTrue(all(run.get("charPrIDRef") == "26" for run in headings))
+            self.assertTrue(all(run.get("charPrIDRef") == "27" for run in bodies))
+            values = [t.text or "" for t in section.findall(".//{%s}t" % HP)]
+            text = " ".join(values)
+            self.assertNotIn("연동 노드 구성 (CSCI 송수신 관계)", text)
+            self.assertIn("IE-0001(정보보고(MSG_1))", text)
+            self.assertIn("IE-0002(상태보고(MSG_2))", text)
+
+            interface_table = next(
+                table for table in section.findall(".//{%s}tbl" % HP)
+                if "식별자" in "".join(table.findall("{%s}tr" % HP)[0].itertext())
+                and "연동기능" in "".join(table.findall("{%s}tr" % HP)[0].itertext())
+            )
+            records = []
+            for row in interface_table.findall("{%s}tr" % HP)[1:]:
+                cells = row.findall("{%s}tc" % HP)
+                records.append(["".join(cell.itertext()) for cell in cells])
+            self.assertEqual(len(records), 3)
+            self.assertEqual([row[2] for row in records], ["CSU", "CSU", "MDV"])
+            self.assertTrue(all(row[1] == "" for row in records))
+
 
     def test_missing_values_are_blank_and_user_input_is_xml_escaped(self):
         data = render_idd_hwpx(
