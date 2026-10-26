@@ -84,8 +84,8 @@ def _column_widths(table, available=42520):
     if not table.rows:
         return []
     raw = [
-        int(cell.width or 0)
-        for cell in table.rows[0].cells
+        int(column.width or 0)
+        for column in table.columns
     ]
     if not any(raw):
         raw = [1] * len(raw)
