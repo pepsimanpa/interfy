@@ -335,14 +335,14 @@ td .array-size-label { margin: 0; }
   table-layout: fixed;
 }
 .message-field-table .field-col-order { width: 4%; }
-.message-field-table .field-col-type { width: 14%; }
-.message-field-table .field-col-name { width: 9%; }
-.message-field-table .field-col-purpose { width: 17%; }
-.message-field-table .field-col-array { width: 7%; }
+.message-field-table .field-col-type { width: 11%; }
+.message-field-table .field-col-name { width: 8%; }
+.message-field-table .field-col-purpose { width: 20%; }
+.message-field-table .field-col-array { width: 6%; }
 .message-field-table .field-col-size { width: 6%; }
-.message-field-table .field-col-range { width: 17%; }
-.message-field-table .field-col-unit { width: 6%; }
-.message-field-table .field-col-note { width: 16%; }
+.message-field-table .field-col-range { width: 19%; }
+.message-field-table .field-col-unit { width: 5%; }
+.message-field-table .field-col-note { width: 17%; }
 .message-field-table .field-col-actions { width: 4%; }
 .message-field-table th,
 .message-field-table td { padding-left: 7px; padding-right: 7px; }
@@ -352,11 +352,18 @@ td .array-size-label { margin: 0; }
 .message-field-table .type-picker.compact {
   min-width: 0;
   width: 100%;
-  grid-template-columns: 65px minmax(0, 1fr);
+  max-width: 170px;
+  grid-template-columns: 62px minmax(0, 1fr);
   gap: 4px;
 }
 .message-field-table .type-picker.compact > input,
-.message-field-table .type-picker.compact > select { min-width: 0; }
+.message-field-table .type-picker.compact > select {
+  min-width: 0;
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 4px;
+  text-overflow: ellipsis;
+}
 .message-field-table .array-size-label.compact { min-width: 0; }
 .message-field-table .array-size-control { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .message-field-table .order-cell { min-width: 0; gap: 3px; }
