@@ -102,9 +102,19 @@ class IddHwpxTests(unittest.TestCase):
             fontface = head.find(".//{%s}fontface[@lang='HANGUL']" % HH)
             selected_font = fontface.find("{%s}font[@id='%s']" %
                                           (HH, face_ref.get("hangul")))
-            self.assertEqual(selected_font.get("face"), "고딕")
-            self.assertEqual(selected_font.find("{%s}substFont" % HH).get("face"),
-                             "맑은 고딕")
+            self.assertEqual(selected_font.get("face"), "맑은 고딕")
+            self.assertEqual(body_char.get("height"), "1100")
+            for style_id, expected in (("26", "돋움"), ("27", "바탕"),
+                                       ("28", "맑은 고딕"), ("29", "돋움")):
+                char = head.find(".//{%s}charPr[@id='%s']" % (HH, style_id))
+                self.assertEqual(char.get("height"), "1100" if style_id in ("28", "29")
+                                 else ("1000" if style_id == "26" else "900"))
+                face_id = char.find("{%s}fontRef" % HH).get("hangul")
+                selected = fontface.find("{%s}font[@id='%s']" % (HH, face_id))
+                self.assertEqual(selected.get("face"), expected)
+            gray_fill = head.find(".//{%s}borderFill[@id='9']" % HH)
+            gray_brush = gray_fill.find(".//{http://www.hancom.co.kr/hwpml/2011/core}winBrush")
+            self.assertEqual(gray_brush.get("faceColor"), "#D6D6D6")
 
             section = etree.fromstring(archive.read("Contents/section0.xml"))
             body_paragraph = next(
@@ -113,6 +123,11 @@ class IddHwpxTests(unittest.TestCase):
             )
             self.assertEqual(body_paragraph.get("styleIDRef"), "1")
             self.assertEqual(body_paragraph.find("{%s}run" % HP).get("charPrIDRef"), "25")
+            section_heading = next(
+                p for p in section.findall("{%s}p" % HP)
+                if "3.2 인터페이스간 연동 설계" in "".join(p.itertext())
+            )
+            self.assertEqual(section_heading.find("{%s}run" % HP).get("charPrIDRef"), "28")
             headings = section.findall(".//{%s}tbl/{%s}tr[1]//{%s}run" % (HP, HP, HP))
             bodies = section.findall(".//{%s}tbl/{%s}tr[2]//{%s}run" % (HP, HP, HP))
             self.assertTrue(headings and bodies)
@@ -123,6 +138,21 @@ class IddHwpxTests(unittest.TestCase):
             self.assertEqual(len(captions), 3)
             self.assertTrue(all(c.get("side") == "TOP" for c in captions))
             self.assertIn("데이터요소 - IE-0001", "".join(captions[0].itertext()))
+            for caption in captions:
+                paragraph = caption.find(".//{%s}p" % HP)
+                self.assertEqual(paragraph.get("paraPrIDRef"), "18")
+                self.assertEqual(paragraph.find("{%s}run" % HP).get("charPrIDRef"), "29")
+            # Source IDD table 8: only labels and field-heading cells are gray.
+            detail_table = next(table for table in section.findall(".//{%s}tbl" % HP)
+                                if "인터페이스명(식별자)" in "".join(table.itertext()))
+            detail_rows = detail_table.findall("{%s}tr" % HP)
+            shades = [[tc.get("borderFillIDRef") for tc in row.findall("{%s}tc" % HP)]
+                      for row in detail_rows]
+            self.assertEqual(shades[0], ["9", "10"])
+            self.assertEqual(shades[1], ["9", "10", "9", "10"])
+            self.assertEqual(shades[2], ["9", "10", "9", "10"])
+            self.assertEqual(shades[3], ["9"] * 7)
+            self.assertEqual(shades[4], ["10"] * 7)
             values = [t.text or "" for t in section.findall(".//{%s}t" % HP)]
             text = " ".join(values)
             self.assertNotIn("연동 노드 구성 (CSCI 송수신 관계)", text)
