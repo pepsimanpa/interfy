@@ -81,9 +81,9 @@ class IddDocxTests(unittest.TestCase):
                 "IE-0004(회수(MSG_14))",
             ],
         )
-        details = [(table.rows[1].cells[1].text, table.rows[2].cells[1].text)
+        details = [(table.rows[0].cells[2].text, table.rows[1].cells[2].text)
                    for table in doc.tables
-                   if len(table.rows) > 2 and table.rows[1].cells[0].text == "인터페이스명(식별자)"]
+                   if len(table.rows) > 3 and table.rows[0].cells[0].text == "인터페이스명(식별자)"]
         self.assertEqual(details[0], ("IE-0001(항법(MSG_11))", "CSU"))
         self.assertEqual(details[-1], ("IE-0005(미연결(MSG_10))", ""))
 
