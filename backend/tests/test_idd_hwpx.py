@@ -92,8 +92,27 @@ class IddHwpxTests(unittest.TestCase):
             self.assertEqual(table_header_style.get("height"), "1000")
             self.assertEqual(table_body_style.get("height"), "900")
             self.assertEqual(head.find(".//{%s}charPr[@id='25']" % HH).get("height"), "1100")
+            # Actual body text must point to the 11pt Gothic style, not just
+            # define an unused character property in header.xml.
+            for style_id in ("0", "1"):
+                style = head.find(".//{%s}style[@id='%s']" % (HH, style_id))
+                self.assertEqual(style.get("charPrIDRef"), "25")
+            body_char = head.find(".//{%s}charPr[@id='25']" % HH)
+            face_ref = body_char.find("{%s}fontRef" % HH)
+            fontface = head.find(".//{%s}fontface[@lang='HANGUL']" % HH)
+            selected_font = fontface.find("{%s}font[@id='%s']" %
+                                          (HH, face_ref.get("hangul")))
+            self.assertEqual(selected_font.get("face"), "고딕")
+            self.assertEqual(selected_font.find("{%s}substFont" % HH).get("face"),
+                             "맑은 고딕")
 
             section = etree.fromstring(archive.read("Contents/section0.xml"))
+            body_paragraph = next(
+                p for p in section.findall("{%s}p" % HP)
+                if "3.1~3.2 인터페이스 설계" in "".join(p.itertext())
+            )
+            self.assertEqual(body_paragraph.get("styleIDRef"), "1")
+            self.assertEqual(body_paragraph.find("{%s}run" % HP).get("charPrIDRef"), "25")
             headings = section.findall(".//{%s}tbl/{%s}tr[1]//{%s}run" % (HP, HP, HP))
             bodies = section.findall(".//{%s}tbl/{%s}tr[2]//{%s}run" % (HP, HP, HP))
             self.assertTrue(headings and bodies)
