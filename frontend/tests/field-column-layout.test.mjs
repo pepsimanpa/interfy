@@ -35,3 +35,22 @@ test('description, allowed range and notes are wider than compact information co
   assert.match(stylesheet, /\.message-field-table \.array-size-label\.compact \{ min-width: 0; \}/);
   assert.match(stylesheet, /\.message-field-table \.type-picker\.compact/);
 });
+
+test('type combo becomes noticeably smaller without affecting its values', () => {
+  for (const [column, size] of Object.entries({
+    type: 11, name: 8, purpose: 20, array: 6,
+    range: 19, unit: 5, note: 17,
+  })) {
+    assert.ok(stylesheet.includes('.message-field-table .field-col-' + column + ' { width: ' + size + '%; }'));
+  }
+
+  const typePicker = stylesheet.split('.message-field-table .type-picker.compact {')[1]?.split('}')[0];
+  assert.ok(typePicker);
+  assert.ok(typePicker.includes('max-width: 170px;'));
+  assert.ok(typePicker.includes('grid-template-columns: 62px minmax(0, 1fr);'));
+  assert.ok(stylesheet.includes('font-size: 12px;\n  padding: 6px 4px;'));
+
+  const typeComponent = source.slice(source.indexOf('function TypeSelect('), source.indexOf('function ArraySizeControl('));
+  assert.ok(typeComponent.includes('title={currentRefName}'));
+  assert.ok(typeComponent.includes('title={value?.type || "uint32"}'));
+});
