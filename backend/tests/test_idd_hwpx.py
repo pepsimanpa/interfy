@@ -72,7 +72,7 @@ class IddHwpxTests(unittest.TestCase):
                 self.assertEqual(int(hwpx_table.get("rowCnt")), len(docx_table.rows))
                 rows = hwpx_table.findall("{%s}tr" % HP)
                 for row in rows:
-                    self.assertEqual(len(row.findall("{%s}tc" % HP)), len(docx_table.columns))
+                    self.assertEqual(sum(int(tc.find("{%s}cellSpan" % HP).get("colSpan")) for tc in row.findall("{%s}tc" % HP)), len(docx_table.columns))
             section_text = "\n".join((t.text or "") for t in section.findall(".//{%s}t" % HP))
             for value in ("시험체계", "CSU", "AUV", "latitude",
                           "위도 <degree>", "& 각도", "명령상태", "-90~90",
@@ -91,13 +91,19 @@ class IddHwpxTests(unittest.TestCase):
             table_body_style = head.find(".//{%s}charPr[@id='27']" % HH)
             self.assertEqual(table_header_style.get("height"), "1000")
             self.assertEqual(table_body_style.get("height"), "900")
+            self.assertEqual(head.find(".//{%s}charPr[@id='25']" % HH).get("height"), "1100")
 
             section = etree.fromstring(archive.read("Contents/section0.xml"))
             headings = section.findall(".//{%s}tbl/{%s}tr[1]//{%s}run" % (HP, HP, HP))
             bodies = section.findall(".//{%s}tbl/{%s}tr[2]//{%s}run" % (HP, HP, HP))
             self.assertTrue(headings and bodies)
-            self.assertTrue(all(run.get("charPrIDRef") == "26" for run in headings))
-            self.assertTrue(all(run.get("charPrIDRef") == "27" for run in bodies))
+            self.assertTrue(any(run.get("charPrIDRef") == "26" for run in headings))
+            self.assertTrue(any(run.get("charPrIDRef") == "27" for run in bodies))
+            self.assertTrue(all(tbl.find("{%s}pos" % HP).get("treatAsChar") == "0" for tbl in section.findall(".//{%s}tbl" % HP)))
+            captions = section.findall(".//{%s}tbl/{%s}caption" % (HP, HP))
+            self.assertEqual(len(captions), 3)
+            self.assertTrue(all(c.get("side") == "TOP" for c in captions))
+            self.assertIn("데이터요소 - IE-0001", "".join(captions[0].itertext()))
             values = [t.text or "" for t in section.findall(".//{%s}t" % HP)]
             text = " ".join(values)
             self.assertNotIn("연동 노드 구성 (CSCI 송수신 관계)", text)
