@@ -26,6 +26,7 @@ from .idd_docx import render_idd_docx
 
 ASSETS = Path(__file__).resolve().parent / "hwpx_assets"
 HP = "http://www.hancom.co.kr/hwpml/2011/paragraph"
+HH = "http://www.hancom.co.kr/hwpml/2011/head"
 OPF = "http://www.idpf.org/2007/opf/"
 HWP_MIMETYPE = b"application/hwp+zip"
 
@@ -182,6 +183,22 @@ def _hwpx_section(docx):
     return etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
 
 
+def _hwpx_header():
+    """Set only HWPX table text sizes; keep Word typography unchanged.
+
+    The bundled table template uses charPr 26 for headers and 27 for body
+    cells. HWPX heights are stored in hundredths of a point (1000 = 10pt).
+    """
+    tree = _asset_xml("Contents/header.xml")
+    root = tree.getroot()
+    for char_id, point_size in (("26", 10), ("27", 9)):
+        char_pr = root.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
+        if char_pr is None:
+            raise ValueError("Missing HWPX table character style: " + char_id)
+        char_pr.set("height", str(point_size * 100))
+    return etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
+
+
 def _manifest(project_name):
     tree = _asset_xml("Contents/content.hpf")
     root = tree.getroot()
@@ -196,6 +213,7 @@ def render_idd_hwpx(project, messages) -> bytes:
     word_bytes = render_idd_docx(project, messages)
     word_doc = Document(BytesIO(word_bytes))
     section_xml = _hwpx_section(word_doc)
+    header_xml = _hwpx_header()
     manifest_xml = _manifest(getattr(project, "name", ""))
 
     preview = "\n".join(
@@ -208,6 +226,8 @@ def render_idd_hwpx(project, messages) -> bytes:
         for path in PACKAGE_FILES:
             if path == "Contents/section0.xml":
                 data = section_xml
+            elif path == "Contents/header.xml":
+                data = header_xml
             elif path == "Contents/content.hpf":
                 data = manifest_xml
             elif path == "Preview/PrvText.txt":
