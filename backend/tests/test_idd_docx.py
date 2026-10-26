@@ -1,4 +1,5 @@
 from io import BytesIO
+import re
 import unittest
 from types import SimpleNamespace
 
@@ -37,6 +38,56 @@ def document_text(doc):
 
 
 class IddDocxTests(unittest.TestCase):
+    def assert_sequential_idd_elements(self, doc, expected):
+        """3.1 outward IE order and 3.2 detailed IE order must agree."""
+        listing = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
+        outward_ids = [re.match(r"IE-\d{4}", row.cells[6].text).group()
+                       for row in listing.rows[1:]]
+        self.assertEqual(outward_ids, expected[:len(outward_ids)])
+        detailed = [p.text for p in doc.paragraphs
+                    if re.match(r"^3\.2\.\d+\.\d+ IE-\d{4}\(", p.text)]
+        detailed_ids = [re.search(r"IE-\d{4}", line).group() for line in detailed]
+        self.assertEqual(detailed_ids, expected)
+        if detailed:
+            self.assertTrue(detailed[0].startswith("3.2.1.1 IE-0001("))
+
+
+    def test_global_sequence_with_interleaved_relations_and_unsent_first(self):
+        project = SimpleNamespace(name="TEST")
+        messages = [
+            message(10, "미연결", tx=(), rx=("CSU",), order_index=0),
+            message(11, "항법", tx=("CSU",), rx=("AUV",), order_index=1),
+            message(12, "상태", tx=("MDV",), rx=("CSU",), order_index=2),
+            message(13, "임무", tx=("CSU",), rx=("AUV",), order_index=3),
+            message(14, "회수", tx=("MDV",), rx=("CSU",), order_index=4),
+        ]
+        doc = Document(BytesIO(render_idd_docx(project, messages)))
+        # A later message in an earlier-encountered relation must not jump IE IDs
+        # when exported 3.2 chapters are grouped by relation.
+        self.assert_sequential_idd_elements(
+            doc, ["IE-0001", "IE-0002", "IE-0003", "IE-0004", "IE-0005"]
+        )
+        listing = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
+        self.assertEqual(
+            [row.cells[2].text for row in listing.rows[1:]],
+            ["CSU", "CSU", "MDV", "MDV"],
+        )
+        self.assertEqual(
+            [row.cells[6].text for row in listing.rows[1:]],
+            [
+                "IE-0001(항법(MSG_11))",
+                "IE-0002(임무(MSG_13))",
+                "IE-0003(상태(MSG_12))",
+                "IE-0004(회수(MSG_14))",
+            ],
+        )
+        details = [(table.rows[1].cells[1].text, table.rows[2].cells[1].text)
+                   for table in doc.tables
+                   if len(table.rows) > 2 and table.rows[1].cells[0].text == "인터페이스명(식별자)"]
+        self.assertEqual(details[0], ("IE-0001(항법(MSG_11))", "CSU"))
+        self.assertEqual(details[-1], ("IE-0005(미연결(MSG_10))", ""))
+
+
     def test_idd_docx_produces_editable_tables_with_saved_data(self):
         project = SimpleNamespace(name="CSU 연동")
         messages = [
@@ -75,7 +126,7 @@ class IddDocxTests(unittest.TestCase):
         interface_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
         assert [row.cells[2].text for row in interface_table.rows[1:]] == ["CSU", "MDV"]
         assert [row.cells[6].text for row in interface_table.rows[1:]] == [
-            "IE-0001(A(MSG_1))", "IE-0001(A(MSG_1))"
+            "IE-0001(A(MSG_1))", "IE-0002(A(MSG_1))"
         ]
         assert all(row.cells[1].text == "" for row in interface_table.rows[1:])
         # Unknown communication fields stay blank, rather than fabricated.
@@ -105,16 +156,18 @@ class IddDocxTests(unittest.TestCase):
         assert actual == [
             ("", "CSU", "IE-0001(항법정보(MSG_1))"),
             ("", "CSU", "IE-0002(임무명령(MSG_2))"),
-            ("", "MDV", "IE-0002(임무명령(MSG_2))"),
-            ("", "AUV", "IE-0003(상태보고(MSG_3))"),
+            ("", "MDV", "IE-0003(임무명령(MSG_2))"),
+            ("", "AUV", "IE-0004(상태보고(MSG_3))"),
         ]
         text = document_text(doc)
         assert "연동 노드 구성 (CSCI 송수신 관계)" not in text
-        assert "IE-0004(송신 미지정(MSG_4))" in text  # 3.2 still documents it
-        assert text.count("IE-0002(임무명령(MSG_2))") >= 3
+        assert "IE-0005(송신 미지정(MSG_4))" in text  # 3.2 still documents it
+        assert "IE-0002(임무명령(MSG_2))" in text
+        assert "IE-0003(임무명령(MSG_2))" in text
         # Detail data-element rows and headings use the same IE identifier.
         assert "IE-0001(항법정보(MSG_1))" in text
-        assert "IE-0003(상태보고(MSG_3))" in text
+        assert "IE-0004(상태보고(MSG_3))" in text
+        self.assert_sequential_idd_elements(doc, ["IE-0001", "IE-0002", "IE-0003", "IE-0004", "IE-0005"])
 
 
     def test_idd_generates_template_when_project_is_empty(self):
