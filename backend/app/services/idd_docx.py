@@ -80,29 +80,34 @@ def _sorted_struct_messages(messages):
     )
 
 
-def _outgoing_interface_entries(messages):
-    """One list row per sending CSCI and message, grouped by sending node.
+def _sequenced_data_elements(relations):
+    """Build the shared 3.1/3.2 order and one document-wide IE counter.
 
-    A message with multiple TX nodes gets one row under each TX node. It is
-    still the same data element and therefore retains the same IE identifier.
-    Messages without a sender are omitted from 3.1, not given a fictitious node.
+    One IE represents a specific sending node's message occurrence. The same
+    message sent by two different CSCIs is therefore assigned *two* IE IDs.
+    Within each relation group, group messages by sender to keep 3.1 readable.
+    Unassigned-sender messages are documented in 3.2 after the outgoing items
+    and do not produce a fictitious 3.1 interface entry.
     """
-    by_node = OrderedDict()
-    for message in _sorted_struct_messages(messages):
-        for node_name in _target_names(message, "tx"):
-            by_node.setdefault(node_name, []).append(message)
-    return [(node_name, message) for node_name, sent in by_node.items() for message in sent]
-
-
-def _data_element_ids(messages, outgoing_entries):
-    """Assign sequential IE IDs by first appearance in the outgoing list.
-
-    Complete the ID map with unsent messages so 3.2 can use unique IDs too.
-    """
-    result = {}
-    for message in [entry[1] for entry in outgoing_entries] + _sorted_struct_messages(messages):
-        if message.id not in result:
-            result[message.id] = "IE-%04d" % (len(result) + 1)
+    result = OrderedDict()
+    next_number = 1
+    # Stable sort: assigned-sender groups first so the very first 3.2 data
+    # element is IE-0001 and 3.1 also starts with IE-0001.
+    keys = sorted(relations, key=lambda key: not bool(key[0]))
+    for key in keys:
+        senders, _receivers = key
+        group = relations[key]
+        entries = []
+        if senders:
+            for sender in senders:
+                for message in group:
+                    entries.append((sender, message, "IE-%04d" % next_number))
+                    next_number += 1
+        else:
+            for message in group:
+                entries.append(("", message, "IE-%04d" % next_number))
+                next_number += 1
+        result[key] = entries
     return result
 
 
@@ -210,12 +215,12 @@ def _field_detail(field):
     ]))
 
 
-def _data_element_table(document, message, identifier):
+def _data_element_table(document, message, identifier, sender):
     element = _data_element_label(message, identifier)
     _caption(document, "데이터요소 - " + element)
     _table(document, ["항목", "내용", "항목", "내용"], [
         ["인터페이스명(식별자)", element, "", ""],
-        ["송신처", ", ".join(_target_names(message, "tx")), "수신처", ", ".join(_target_names(message, "rx"))],
+        ["송신처", sender, "수신처", ", ".join(_target_names(message, "rx"))],
         ["발생주기", _period(message), "데이터 길이", ("%s Byte" % _size(message)) if _size(message) else ""],
     ], [3.4, 5.1, 3.4, 5.1])
     fields = sorted(getattr(message, "fields", []) or [],
@@ -280,8 +285,13 @@ def render_idd_docx(project, messages) -> bytes:
     document.add_paragraph("Interfy 노드는 CSCI로 취급하며 내부·외부 구분 없이 연동관계별로 정리합니다. 수집되지 않은 항목은 빈칸입니다.")
 
     relations = _relationships(messages)
-    outgoing_entries = _outgoing_interface_entries(messages)
-    data_element_ids = _data_element_ids(messages, outgoing_entries)
+    sequenced_relations = _sequenced_data_elements(relations)
+    outgoing_entries = [
+        (sender, message, identifier)
+        for entries in sequenced_relations.values()
+        for sender, message, identifier in entries
+        if sender
+    ]
 
     _heading(document, "3.1 인터페이스간 연동 개념", 1)
     _heading(document, "3.1.1 인터페이스 대상 식별과 다이어그램", 2)
@@ -290,9 +300,9 @@ def render_idd_docx(project, messages) -> bytes:
     _caption(document, "표 5·6 통합 인터페이스 목록")
     _table(document,
            ["식별자", "연동기능", "연동대상", "통신방법", "상호운용성 수준", "프로토콜", "데이터요소"],
-           [["", "", node_name, "", "", ", ".join(_protocol_names([message])),
-             _data_element_label(message, data_element_ids[message.id])]
-            for node_name, message in outgoing_entries],
+           [["", "", sender, "", "", ", ".join(_protocol_names([message])),
+             _data_element_label(message, identifier)]
+            for sender, message, identifier in outgoing_entries],
            [1.6, 2.5, 3.0, 2.1, 1.5, 2.4, 3.9])
     _heading(document, "3.1.1.2 사용자 인터페이스 목록", 3)
     _caption(document, "표 7 사용자 인터페이스 목록")
@@ -301,19 +311,20 @@ def render_idd_docx(project, messages) -> bytes:
            [], [2.0, 2.5, 3.0, 2.3, 3.5, 3.7])
 
     _heading(document, "3.2 인터페이스간 연동 설계", 1)
-    if not relations:
+    if not sequenced_relations:
         document.add_paragraph("등록된 메시지가 없습니다.")
-    for number, ((tx, rx), group) in enumerate(relations.items(), start=1):
+    for number, ((tx, rx), entries) in enumerate(sequenced_relations.items(), start=1):
+        group = relations[(tx, rx)]
         left = ", ".join(tx)
         right = ", ".join(rx)
         relation_name = " → ".join(part for part in (left, right) if part) or "연동 노드 미지정"
         _heading(document, "3.2.%d %s" % (number, relation_name), 2)
 
         sub = 1
-        for message in group:
-            element = _data_element_label(message, data_element_ids[message.id])
+        for sender, message, identifier in entries:
+            element = _data_element_label(message, identifier)
             _heading(document, "3.2.%d.%d %s 데이터요소" % (number, sub, element), 3)
-            _data_element_table(document, message, data_element_ids[message.id])
+            _data_element_table(document, message, identifier, sender)
             sub += 1
 
         _heading(document, "3.2.%d.%d 통신방법" % (number, sub), 3)
