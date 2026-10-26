@@ -41,12 +41,12 @@ class IddDocxTests(unittest.TestCase):
     def assert_sequential_idd_elements(self, doc, expected):
         """3.1 outward IE order and 3.2 detailed IE order must agree."""
         listing = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
-        outward_ids = [re.match(r"IE-\\d{4}", row.cells[6].text).group()
+        outward_ids = [re.match(r"IE-\d{4}", row.cells[6].text).group()
                        for row in listing.rows[1:]]
         self.assertEqual(outward_ids, expected[:len(outward_ids)])
         detailed = [p.text for p in doc.paragraphs
-                    if re.match(r"^3\\.2\\.\\d+\\.\\d+ IE-\\d{4}\\(", p.text)]
-        detailed_ids = [re.search(r"IE-\\d{4}", line).group() for line in detailed]
+                    if re.match(r"^3\.2\.\d+\.\d+ IE-\d{4}\(", p.text)]
+        detailed_ids = [re.search(r"IE-\d{4}", line).group() for line in detailed]
         self.assertEqual(detailed_ids, expected)
         if detailed:
             self.assertTrue(detailed[0].startswith("3.2.1.1 IE-0001("))
