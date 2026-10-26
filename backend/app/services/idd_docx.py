@@ -208,21 +208,61 @@ def _field_detail(field):
 
 
 def _data_element_table(document, message, identifier, sender):
+    """One integrated metadata + field table, matching IDD sample table 8."""
     element = _data_element_label(message, identifier)
     _caption(document, "데이터요소 - " + element)
-    _table(document, ["항목", "내용", "항목", "내용"], [
-        ["인터페이스명(식별자)", element, "", ""],
-        ["송신처", sender, "수신처", ", ".join(_target_names(message, "rx"))],
-        ["발생주기", _period(message), "데이터 길이", ("%s Byte" % _size(message)) if _size(message) else ""],
-    ], [3.4, 5.1, 3.4, 5.1])
+    columns = ["요소명", "타입", "크기", "단위", "보안", "범위", "요소내용"]
+    widths = [2.0, 1.35, 1.0, 1.15, 1.05, 2.35, 8.1]
+    table = document.add_table(rows=4, cols=7)
+    table.style = "Table Grid"
+    table.autofit = False
+    for idx, width in enumerate(widths):
+        table.columns[idx].width = Cm(width)
+
+    def merged_value(row, first, last, value):
+        cell = table.cell(row, first).merge(table.cell(row, last))
+        cell.text = _text(value)
+        return cell
+
+    merged_value(0, 0, 1, "인터페이스명(식별자)")
+    merged_value(0, 2, 6, element)
+    merged_value(1, 0, 1, "송신처")
+    merged_value(1, 2, 3, sender)
+    merged_value(1, 4, 5, "수신처")
+    table.cell(1, 6).text = ", ".join(_target_names(message, "rx"))
+    merged_value(2, 0, 1, "발생주기")
+    merged_value(2, 2, 3, _period(message))
+    merged_value(2, 4, 5, "데이터 길이")
+    table.cell(2, 6).text = ("%s Byte" % _size(message)) if _size(message) else ""
+
+    for index, heading in enumerate(columns):
+        table.cell(3, index).text = heading
+        _shade(table.cell(3, index), "E8EDF3")
+
     fields = sorted(getattr(message, "fields", []) or [],
-                    key=lambda field: (getattr(field, "order_index", 0) or 0, getattr(field, "id", 0) or 0))
-    _table(document,
-           ["요소명", "타입", "크기", "단위", "보안", "범위", "요소내용"],
-           [[_text(getattr(f, "name", "")), _field_type(f), _size(f),
-             _text(getattr(f, "unit", "")), "",
-             _text(getattr(f, "value_range", "")), _field_detail(f)] for f in fields],
-           [2.2, 2.25, 1.05, 1.2, 1.0, 2.8, 6.5])
+                    key=lambda field: (getattr(field, "order_index", 0) or 0,
+                                       getattr(field, "id", 0) or 0))
+    for field in fields:
+        cells = table.add_row().cells
+        values = [_text(getattr(field, "name", "")), _field_type(field), _size(field),
+                  _text(getattr(field, "unit", "")), "",
+                  _text(getattr(field, "value_range", "")), _field_detail(field)]
+        for index, value in enumerate(values):
+            cells[index].text = value
+
+    for row_index, row in enumerate(table.rows):
+        for index, cell in enumerate(row.cells):
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.space_before = Pt(0)
+                paragraph.paragraph_format.space_after = Pt(0)
+                for run in paragraph.runs:
+                    run.font.size = Pt(8)
+                    if row_index == 3:
+                        run.bold = True
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _repeat_header(table.rows[3])
+    document.add_paragraph()
 
 
 def _communication_table(document, tx, rx):
@@ -295,7 +335,7 @@ def render_idd_docx(project, messages) -> bytes:
            [["", "", sender, "", "", ", ".join(_protocol_names([message])),
              _data_element_label(message, identifier)]
             for sender, message, identifier in outgoing_entries],
-           [1.6, 2.5, 3.0, 2.1, 1.5, 2.4, 3.9])
+           [1.3, 1.8, 2.3, 1.8, 1.2, 1.7, 6.9])
     _heading(document, "3.1.1.2 사용자 인터페이스 목록", 3)
     _caption(document, "표 7 사용자 인터페이스 목록")
     _table(document,
