@@ -1863,6 +1863,11 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
                   {relationLabel && <g className="design-edge-label" transform={`translate(${label.x},${label.y})`}><rect x={-labelWidth / 2} y="-10" width={labelWidth} height="20" rx="10"/><text textAnchor="middle" dy="3.5">{relationLabel}</text></g>}
                 </g>;
               })}
+              {secondaryDeviceId && !renderRelations.length && (
+                <text x="450" y="259" textAnchor="middle" className="design-pair-empty-label">
+                  선택한 두 노드 사이에 연동 메시지가 없습니다.
+                </text>
+              )}
               {visibleTargets.map(target => {
                 const pos = positions.get(Number(target.id)) || { x: 450, y: 195 };
                 const active = Number(selectedDeviceId) === Number(target.id) || Number(secondaryDeviceId) === Number(target.id);
