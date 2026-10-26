@@ -181,10 +181,34 @@ tr.dragging-row { opacity: .55; background: #eff6ff; }
 .backup-note-cell { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { .backup-create-actions { width: 100%; justify-content: stretch; } .backup-create-actions input { width: 100%; min-width: 0; } }
 
-/* Deferred field save controls */
-.field-list-header { align-items: center; }
+/* Deferred field save controls + live message size in the title bar */
+.field-list-header { align-items: center; flex-wrap: wrap; }
 .field-list-header > div:first-child { min-width: 0; }
-.field-save-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; flex-wrap: nowrap; align-self: center; }
+.field-list-heading { flex: 1 1 310px; min-width: 0; }
+.field-list-heading-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.field-list-heading-row h2 { margin: 0; }
+.message-total-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 5px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f1f5f9;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.message-total-size-label { color: #64748b; font-size: 11px; font-weight: 600; }
+.message-total-size-value { color: #0f172a; font-size: 18px; font-weight: 800; line-height: 1.1; }
+.message-total-size-value small { font-size: 11px; font-weight: 650; }
+.field-save-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; align-self: center; }
+:root[data-theme="dark"] .message-total-size { background: #2d2d30; border-color: #56565a; }
+:root[data-theme="dark"] .message-total-size-label { color: #b4b4b4; }
+:root[data-theme="dark"] .message-total-size-value { color: #f2f2f2; }
+@media (max-width: 920px) {
+  .field-list-header .field-save-actions { width: 100%; justify-content: flex-start; }
+}
 .dirty-indicator { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 999px; padding: 6px 9px; font-size: 12px; font-weight: 800; white-space: nowrap; }
 td .array-size-label { margin: 0; }
 @media (max-width: 760px) { .field-save-actions { justify-content: flex-start; } }

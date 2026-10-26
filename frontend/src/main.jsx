@@ -3414,6 +3414,13 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
     [message.fields, draftFields]
   );
 
+  // Calculate from the *editable* field list, not the persisted message.size_bytes.
+  // This keeps the displayed total current while fields, types or arrays change.
+  const totalMessageSize = useMemo(
+    () => draftFields.reduce((total, field) => total + fieldSizeBytes(field, messages), 0),
+    [draftFields, messages]
+  );
+
   useEffect(() => {
     setMessageForm({ name: message.name, struct_name: generatedNameOf(message), period: normalizePeriodInput(message.period), infocode: message.infocode || '', protocol: message.protocol || '', description: message.description || '' });
     setLabelIds((message.labels || []).map(label => label.id));
@@ -3544,7 +3551,16 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
       </div>
       <div className="card span-3 message-fields-card">
         <div className="card-title field-list-header">
-          <div><h2>필드 목록</h2><p>필드 변경 후 반드시 변경사항 저장을 눌러야 반영됩니다. 마지막 행에서 새 필드를 바로 추가할 수 있습니다.</p></div>
+          <div className="field-list-heading">
+            <div className="field-list-heading-row">
+              <h2>필드 목록</h2>
+              <output className="message-total-size" aria-label={`전체 메시지 크기 ${totalMessageSize} Byte`} title="필드 크기 합계 (배열 및 참조형 포함, 헤더·패딩 제외)">
+                <span className="message-total-size-label">전체 메시지 크기</span>
+                <strong className="message-total-size-value">{totalMessageSize.toLocaleString('ko-KR')} <small>Byte</small></strong>
+              </output>
+            </div>
+            <p>필드 변경 후 반드시 변경사항 저장을 눌러야 반영됩니다. 마지막 행에서 새 필드를 바로 추가할 수 있습니다.</p>
+          </div>
           <div className="field-save-actions">
             {hasFieldChanges && <span className="dirty-indicator">저장되지 않은 변경사항 있음</span>}
             <button type="button" className="ghost" disabled={!hasFieldChanges} onClick={resetFieldChanges}>변경 취소</button>
