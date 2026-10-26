@@ -35,3 +35,24 @@ test('description, allowed range and notes are wider than compact information co
   assert.match(stylesheet, /\.message-field-table \.array-size-label\.compact \{ min-width: 0; \}/);
   assert.match(stylesheet, /\.message-field-table \.type-picker\.compact/);
 });
+
+test('the type combo is materially narrower than before, including its inner controls', () => {
+  const widths = Object.fromEntries(
+    [...stylesheet.matchAll(/\\.message-field-table \\.field-col-(\\w+) \\{ width: (\\d+)%; \\}/g)]
+      .map(match => [match[1], Number(match[2])])
+  );
+  assert.equal(widths.type, 11);
+  assert.equal(widths.purpose, 20);
+  assert.equal(widths.range, 19);
+  assert.equal(widths.note, 17);
+
+  const typePicker = stylesheet.match(/\\.message-field-table \\.type-picker\\.compact \\{([\\s\\S]*?)\\}/);
+  assert.ok(typePicker);
+  assert.match(typePicker[1], /max-width: 170px/);
+  assert.match(typePicker[1], /grid-template-columns: 62px minmax\\(0, 1fr\\)/);
+  assert.match(stylesheet, /\\.message-field-table \\.type-picker\\.compact > select \\{[\\s\\S]*?font-size: 12px;/);
+
+  const typeComponent = source.slice(source.indexOf('function TypeSelect('), source.indexOf('function ArraySizeControl('));
+  assert.match(typeComponent, /title=\\{currentRefName\\}/);
+  assert.match(typeComponent, /title=\\{value\\?\\.type \\|\\| "uint32"\\}/);
+});
