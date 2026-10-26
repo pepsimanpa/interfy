@@ -325,6 +325,43 @@ td .array-size-label { margin: 0; }
   .group-row-header { flex-direction: column; }
 }
 
+/* Message field editor: give descriptive columns most of the horizontal space.
+   Keep this scoped to message fields so the Enum and other tables are unchanged.
+   A scrollable minimum width preserves usable controls in the split editor. */
+.message-fields-card .message-field-table {
+  width: 100%;
+  min-width: 1520px;
+  table-layout: fixed;
+}
+.message-field-table .field-col-order { width: 4%; }
+.message-field-table .field-col-type { width: 14%; }
+.message-field-table .field-col-name { width: 9%; }
+.message-field-table .field-col-purpose { width: 17%; }
+.message-field-table .field-col-array { width: 7%; }
+.message-field-table .field-col-size { width: 6%; }
+.message-field-table .field-col-range { width: 17%; }
+.message-field-table .field-col-unit { width: 6%; }
+.message-field-table .field-col-note { width: 16%; }
+.message-field-table .field-col-actions { width: 4%; }
+.message-field-table th,
+.message-field-table td { padding-left: 7px; padding-right: 7px; }
+.message-field-table td { min-width: 0; }
+.message-field-table td input,
+.message-field-table td select { width: 100%; min-width: 0; padding-left: 7px; padding-right: 7px; }
+.message-field-table .type-picker.compact {
+  min-width: 0;
+  width: 100%;
+  grid-template-columns: 65px minmax(0, 1fr);
+  gap: 4px;
+}
+.message-field-table .type-picker.compact > input,
+.message-field-table .type-picker.compact > select { min-width: 0; }
+.message-field-table .array-size-label.compact { min-width: 0; }
+.message-field-table .array-size-control { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.message-field-table .order-cell { min-width: 0; gap: 3px; }
+.message-field-table .order-pill { min-width: 24px; height: 24px; }
+.message-field-table td:last-child button.icon { padding: 5px; }
+
 /* Inline field add row */
 .field-add-row td { background: #fbfdff; border-top: 1px solid #dbeafe; }
 .field-add-row input::placeholder { color: #94a3b8; }
