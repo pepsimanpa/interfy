@@ -181,8 +181,10 @@ def _caption(document, text):
     paragraph.paragraph_format.keep_with_next = True
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.add_run(text)
-    run.bold = True
-    run.font.size = Pt(9)
+    run.bold = False
+    run.font.name = "돋움"
+    run.font.size = Pt(11)
+    run.font.color.rgb = RGBColor(0, 0, 255)
 
 
 def _heading(document, text, level):
@@ -237,7 +239,13 @@ def _data_element_table(document, message, identifier, sender):
 
     for index, heading in enumerate(columns):
         table.cell(3, index).text = heading
-        _shade(table.cell(3, index), "E8EDF3")
+        _shade(table.cell(3, index), "D6D6D6")
+
+    # IDD template table 8: shade the metadata *labels* as well as
+    # the seven-column field header (the values remain white).
+    for row_index, column_indexes in ((0, (0,)), (1, (0, 4)), (2, (0, 4))):
+        for column_index in column_indexes:
+            _shade(table.cell(row_index, column_index), "D6D6D6")
 
     fields = sorted(getattr(message, "fields", []) or [],
                     key=lambda field: (getattr(field, "order_index", 0) or 0,
@@ -257,9 +265,13 @@ def _data_element_table(document, message, identifier, sender):
                 paragraph.paragraph_format.space_before = Pt(0)
                 paragraph.paragraph_format.space_after = Pt(0)
                 for run in paragraph.runs:
-                    run.font.size = Pt(8)
-                    if row_index == 3:
-                        run.bold = True
+                    label = (row_index == 3 or
+                             (row_index == 0 and index == 0) or
+                             (row_index in (1, 2) and index in (0, 4)))
+                    run.font.name = "돋움" if label else "바탕"
+                    run.font.size = Pt(10 if label else 9)
+                    run.bold = False
+                    if label:
                         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     _repeat_header(table.rows[3])
     document.add_paragraph()
