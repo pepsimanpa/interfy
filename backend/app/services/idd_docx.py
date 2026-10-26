@@ -72,6 +72,47 @@ def _relationships(messages):
     return result
 
 
+def _sorted_struct_messages(messages):
+    return sorted(
+        (message for message in messages
+         if _text(getattr(message, "definition_type", "STRUCT")).upper() != "ENUM"),
+        key=lambda m: (getattr(m, "order_index", 0) or 0, getattr(m, "id", 0) or 0),
+    )
+
+
+def _outgoing_interface_entries(messages):
+    """One list row per sending CSCI and message, grouped by sending node.
+
+    A message with multiple TX nodes gets one row under each TX node. It is
+    still the same data element and therefore retains the same IE identifier.
+    Messages without a sender are omitted from 3.1, not given a fictitious node.
+    """
+    by_node = OrderedDict()
+    for message in _sorted_struct_messages(messages):
+        for node_name in _target_names(message, "tx"):
+            by_node.setdefault(node_name, []).append(message)
+    return [(node_name, message) for node_name, sent in by_node.items() for message in sent]
+
+
+def _data_element_ids(messages, outgoing_entries):
+    """Assign sequential IE IDs by first appearance in the outgoing list.
+
+    Complete the ID map with unsent messages so 3.2 can use unique IDs too.
+    """
+    result = {}
+    for message in [entry[1] for entry in outgoing_entries] + _sorted_struct_messages(messages):
+        if message.id not in result:
+            result[message.id] = "IE-%04d" % (len(result) + 1)
+    return result
+
+
+def _data_element_label(message, identifier):
+    name = _message_display(message)
+    struct = _text(getattr(message, "struct_name", ""))
+    detail = "%s(%s)" % (name, struct) if struct else name
+    return "%s(%s)" % (identifier, detail)
+
+
 def _period(message):
     value = _text(getattr(message, "period", ""))
     if not value or value == "0":
@@ -169,10 +210,11 @@ def _field_detail(field):
     ]))
 
 
-def _data_element_table(document, message):
-    _caption(document, "데이터요소 - " + _message_identity(message))
+def _data_element_table(document, message, identifier):
+    element = _data_element_label(message, identifier)
+    _caption(document, "데이터요소 - " + element)
     _table(document, ["항목", "내용", "항목", "내용"], [
-        ["인터페이스명(식별자)", _message_identity(message), "", ""],
+        ["인터페이스명(식별자)", element, "", ""],
         ["송신처", ", ".join(_target_names(message, "tx")), "수신처", ", ".join(_target_names(message, "rx"))],
         ["발생주기", _period(message), "데이터 길이", ("%s Byte" % _size(message)) if _size(message) else ""],
     ], [3.4, 5.1, 3.4, 5.1])
@@ -238,26 +280,21 @@ def render_idd_docx(project, messages) -> bytes:
     document.add_paragraph("Interfy 노드는 CSCI로 취급하며 내부·외부 구분 없이 연동관계별로 정리합니다. 수집되지 않은 항목은 빈칸입니다.")
 
     relations = _relationships(messages)
+    outgoing_entries = _outgoing_interface_entries(messages)
+    data_element_ids = _data_element_ids(messages, outgoing_entries)
 
     _heading(document, "3.1 인터페이스간 연동 개념", 1)
     _heading(document, "3.1.1 인터페이스 대상 식별과 다이어그램", 2)
-    _heading(document, "3.1.1.1 인터페이스 구성도", 3)
-    _caption(document, "연동 노드 구성 (CSCI 송수신 관계)")
-    _table(document, ["송신 CSCI", "연동 방향", "수신 CSCI"], [
-        [", ".join(tx), "→" if tx and rx else "", ", ".join(rx)]
-        for tx, rx in relations
-    ], [7.5, 2.0, 7.5])
-    _heading(document, "3.1.1.2 인터페이스 목록", 3)
+    # No extra CSCI TX/RX relationship summary is needed in the exported IDD.
+    _heading(document, "3.1.1.1 인터페이스 목록", 3)
     _caption(document, "표 5·6 통합 인터페이스 목록")
     _table(document,
            ["식별자", "연동기능", "연동대상", "통신방법", "상호운용성 수준", "프로토콜", "데이터요소"],
-           [["", "\n".join(_unique(_message_display(m) for m in group)),
-             " → ".join(part for part in [", ".join(tx), ", ".join(rx)] if part),
-             "", "", "\n".join(_protocol_names(group)),
-             "\n".join(_message_identity(m) for m in group)]
-            for (tx, rx), group in relations.items()],
+           [["", "", node_name, "", "", ", ".join(_protocol_names([message])),
+             _data_element_label(message, data_element_ids[message.id])]
+            for node_name, message in outgoing_entries],
            [1.6, 2.5, 3.0, 2.1, 1.5, 2.4, 3.9])
-    _heading(document, "3.1.1.3 사용자 인터페이스 목록", 3)
+    _heading(document, "3.1.1.2 사용자 인터페이스 목록", 3)
     _caption(document, "표 7 사용자 인터페이스 목록")
     _table(document,
            ["식별자", "장비명", "기능명", "주사용자", "인터페이스 방법", "사용자 인터페이스"],
@@ -274,8 +311,9 @@ def render_idd_docx(project, messages) -> bytes:
 
         sub = 1
         for message in group:
-            _heading(document, "3.2.%d.%d %s 데이터요소" % (number, sub, _message_display(message)), 3)
-            _data_element_table(document, message)
+            element = _data_element_label(message, data_element_ids[message.id])
+            _heading(document, "3.2.%d.%d %s 데이터요소" % (number, sub, element), 3)
+            _data_element_table(document, message, data_element_ids[message.id])
             sub += 1
 
         _heading(document, "3.2.%d.%d 통신방법" % (number, sub), 3)
