@@ -69,9 +69,15 @@ class IddDocxTests(unittest.TestCase):
         text = document_text(doc)
         assert "Only enum" not in text
         assert "CSU, MDV" in text
-        # A two-sender relationship is preserved as a single source set.
-        relation_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "송신 CSCI")
-        assert len(relation_table.rows) == 2
+        # The optional TX/RX summary table is removed. Each sender gets one
+        # outgoing interface row even when the same message has multiple senders.
+        assert "송신 CSCI" not in [cell.text for table in doc.tables for row in table.rows for cell in row.cells]
+        interface_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
+        assert [row.cells[2].text for row in interface_table.rows[1:]] == ["CSU", "MDV"]
+        assert [row.cells[6].text for row in interface_table.rows[1:]] == [
+            "IE-0001(A(MSG_1))", "IE-0001(A(MSG_1))"
+        ]
+        assert all(row.cells[1].text == "" for row in interface_table.rows[1:])
         # Unknown communication fields stay blank, rather than fabricated.
         comm_table = next(
             table for table in doc.tables
@@ -79,6 +85,36 @@ class IddDocxTests(unittest.TestCase):
         )
         assert comm_table.rows[1].cells[1].text == ""
         assert "3a" not in text
+
+
+    def test_interface_list_uses_one_row_per_sender_and_sent_message(self):
+        project = SimpleNamespace(name="TEST")
+        messages = [
+            message(1, "항법정보", tx=("CSU",), rx=("AUV",), protocol="UDP"),
+            message(2, "임무명령", tx=("CSU", "MDV"), rx=("AUV",), protocol="DDS", order_index=1),
+            message(3, "상태보고", tx=("AUV",), rx=("CSU",), protocol="TCP", order_index=2),
+            message(4, "송신 미지정", tx=(), rx=("CSU",), order_index=3),
+        ]
+        doc = Document(BytesIO(render_idd_docx(project, messages)))
+        interface_table = next(table for table in doc.tables if table.rows[0].cells[0].text == "식별자")
+        assert len(interface_table.rows) == 5
+        actual = [
+            (row.cells[1].text, row.cells[2].text, row.cells[6].text)
+            for row in interface_table.rows[1:]
+        ]
+        assert actual == [
+            ("", "CSU", "IE-0001(항법정보(MSG_1))"),
+            ("", "CSU", "IE-0002(임무명령(MSG_2))"),
+            ("", "MDV", "IE-0002(임무명령(MSG_2))"),
+            ("", "AUV", "IE-0003(상태보고(MSG_3))"),
+        ]
+        text = document_text(doc)
+        assert "연동 노드 구성 (CSCI 송수신 관계)" not in text
+        assert "IE-0004(송신 미지정(MSG_4))" in text  # 3.2 still documents it
+        assert text.count("IE-0002(임무명령(MSG_2))") >= 3
+        # Detail data-element rows and headings use the same IE identifier.
+        assert "IE-0001(항법정보(MSG_1))" in text
+        assert "IE-0003(상태보고(MSG_3))" in text
 
 
     def test_idd_generates_template_when_project_is_empty(self):
