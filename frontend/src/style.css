@@ -328,7 +328,8 @@ td .array-size-label { margin: 0; }
 /* Message field editor: give descriptive columns most of the horizontal space.
    Keep this scoped to message fields so the Enum and other tables are unchanged.
    A scrollable minimum width preserves usable controls in the split editor. */
-.message-fields-card .message-field-table {
+.message-fields-card .message-field-table,
+.compact-message-editor .message-fields-card .message-field-table {
   width: 100%;
   min-width: 1520px;
   table-layout: fixed;
