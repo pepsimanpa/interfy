@@ -128,6 +128,21 @@ class IddHwpxTests(unittest.TestCase):
                 if "3.2 인터페이스간 연동 설계" in "".join(p.itertext())
             )
             self.assertEqual(section_heading.find("{%s}run" % HP).get("charPrIDRef"), "28")
+            # Check every generated non-table text run, not just one sample.
+            # The document title is intentionally excluded.
+            for paragraph in section.findall("{%s}p" % HP):
+                if paragraph.find(".//{%s}tbl" % HP) is not None:
+                    continue
+                for run in paragraph.findall("{%s}run" % HP):
+                    if not any((part.text or "").strip()
+                               for part in run.findall("{%s}t" % HP)):
+                        continue
+                    char_id = run.get("charPrIDRef")
+                    if char_id == "10":  # document title only
+                        continue
+                    char = head.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
+                    self.assertEqual(char.get("height"), "1100",
+                                     "Incorrect 11pt style in " + "".join(paragraph.itertext())[:60])
             headings = section.findall(".//{%s}tbl/{%s}tr[1]//{%s}run" % (HP, HP, HP))
             bodies = section.findall(".//{%s}tbl/{%s}tr[2]//{%s}run" % (HP, HP, HP))
             self.assertTrue(headings and bodies)
