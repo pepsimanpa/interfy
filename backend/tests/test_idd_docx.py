@@ -4,6 +4,7 @@ import unittest
 from types import SimpleNamespace
 
 from docx import Document
+from docx.oxml.ns import qn
 
 from app.services.idd_docx import render_idd_docx
 
@@ -108,6 +109,14 @@ class IddDocxTests(unittest.TestCase):
                       "사용자 인터페이스 목록", "통신방법", "프로토콜"]:
             assert value in text
         assert doc.tables
+        detail = next(table for table in doc.tables
+                      if table.rows[0].cells[0].text == "인터페이스명(식별자)")
+        self.assertEqual(detail.rows[0].cells[0]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "D6D6D6")
+        self.assertEqual(detail.rows[0].cells[2]._tc.tcPr.find(qn("w:shd")), None)
+        self.assertEqual(detail.rows[3].cells[6]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "D6D6D6")
+        self.assertEqual(detail.rows[4].cells[6].text, "위도")
+        self.assertEqual(detail.rows[3].cells[0].paragraphs[0].runs[0].font.size.pt, 10)
+        self.assertEqual(detail.rows[4].cells[0].paragraphs[0].runs[0].font.size.pt, 9)
 
 
     def test_idd_does_not_infer_missing_transport_details_or_pairwise_edges(self):
