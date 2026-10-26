@@ -4115,7 +4115,7 @@ function TypeSelect({ value, messages = [], enums = [], onChange, compact = fals
 
   return (
     <div className={compact ? 'type-picker compact' : 'type-picker'}>
-      <select aria-label="자료형 종류" value={typeKind} onChange={e => changeTypeKind(e.target.value)}>
+      <select aria-label="자료형 종류" title={typeKind === "MESSAGE" ? "메시지" : typeKind === "ENUM" ? "Enum" : "기본"} value={typeKind} onChange={e => changeTypeKind(e.target.value)}>
         <option value="BASIC">기본</option>
         <option value="MESSAGE">메시지</option>
         <option value="ENUM">Enum</option>
@@ -4127,6 +4127,7 @@ function TypeSelect({ value, messages = [], enums = [], onChange, compact = fals
             list={typeKind === 'ENUM' ? enumListId : messageListId}
             placeholder={typeKind === 'ENUM' ? 'Enum명 검색' : '메시지명 검색'}
             value={currentRefName}
+            title={currentRefName}
             onChange={e => changeRefName(e.target.value)}
           />
           <datalist id={messageListId}>
@@ -4137,7 +4138,7 @@ function TypeSelect({ value, messages = [], enums = [], onChange, compact = fals
           </datalist>
         </>
       ) : (
-        <select aria-label="기본 자료형" value={value?.type || 'uint32'} onChange={e => changeBasicType(e.target.value)}>
+        <select aria-label="기본 자료형" title={value?.type || "uint32"} value={value?.type || 'uint32'} onChange={e => changeBasicType(e.target.value)}>
           {SUPPORTED_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
         </select>
       )}
