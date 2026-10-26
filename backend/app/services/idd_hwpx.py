@@ -67,7 +67,7 @@ def _paragraph(text, ids, *, heading=False):
     p = etree.Element("{%s}p" % HP, {
         "id": str(next(ids)),
         "paraPrIDRef": "2" if heading else "22",
-        "styleIDRef": "0",
+        "styleIDRef": "0" if heading else "1",
         "pageBreak": "0",
         "columnBreak": "0",
         "merged": "0",
@@ -214,10 +214,11 @@ def _hwpx_section(docx):
 
 
 def _hwpx_header():
-    """Set only HWPX table text sizes; keep Word typography unchanged.
+    """Set HWPX body and table typography without changing DOCX.
 
-    The bundled table template uses charPr 26 for headers and 27 for body
-    cells. HWPX heights are stored in hundredths of a point (1000 = 10pt).
+    HWPX character heights use hundredths of a point. Apply the 11pt
+    Gothic style both to inline runs and to the underlying normal/body
+    paragraph styles, so Hancom Office can show the same formatting.
     """
     tree = _asset_xml("Contents/header.xml")
     root = tree.getroot()
@@ -236,6 +237,13 @@ def _hwpx_header():
                     "id": str(len(faces)), "face": requested,
                     "type": "TTF", "isEmbedded": "0",
                 })
+                # A font named simply '고딕' may not be installed; retain the
+                # requested family but specify a common Windows fallback.
+                if requested == "고딕":
+                    etree.SubElement(matching, "{%s}substFont" % HH, {
+                        "face": "맑은 고딕", "type": "TTF",
+                        "isEmbedded": "0", "binaryItemIDRef": "",
+                    })
                 face_group.set("fontCnt", str(len(faces) + 1))
             ref.set(lang.lower() if lang not in ("HANGUL", "HANJA") else
                     ("hangul" if lang == "HANGUL" else "hanja"), matching.get("id"))
@@ -245,11 +253,14 @@ def _hwpx_header():
             raise ValueError("Missing HWPX character style: " + char_id)
         char_pr.set("height", {"25": "1100", "26": "1000", "27": "900"}[char_id])
         set_face(char_pr, "신명조" if char_id == "27" else "고딕")
-    for char_id, point_size in (("26", 10), ("27", 9)):
-        char_pr = root.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
-        if char_pr is None:
-            raise ValueError("Missing HWPX table character style: " + char_id)
-        char_pr.set("height", str(point_size * 100))
+    # The original template's named styles '바탕글' and '본문' still
+    # point at 15pt/other-font character shapes unless updated separately.
+    # Set both to our 11pt body character style, preserving heading runs.
+    for style_id in ("0", "1"):
+        style = root.find(".//{%s}style[@id='%s']" % (HH, style_id))
+        if style is None:
+            raise ValueError("Missing HWPX normal/body style: " + style_id)
+        style.set("charPrIDRef", "25")
     return etree.tostring(tree, encoding="UTF-8", xml_declaration=True)
 
 
