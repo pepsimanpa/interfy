@@ -3568,7 +3568,19 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
           </div>
         </div>
         <div className="table-wrap">
-          <table>
+          <table className="message-field-table">
+            <colgroup>
+              <col className="field-col-order" />
+              <col className="field-col-type" />
+              <col className="field-col-name" />
+              <col className="field-col-purpose" />
+              <col className="field-col-array" />
+              <col className="field-col-size" />
+              <col className="field-col-range" />
+              <col className="field-col-unit" />
+              <col className="field-col-note" />
+              <col className="field-col-actions" />
+            </colgroup>
             <thead><tr><th>순서</th><th>자료형</th><th>필드 이름</th><th>필드 용도</th><th>배열</th><th>크기(Byte)</th><th>허용 값 범위</th><th>단위</th><th>비고</th><th>관리</th></tr></thead>
             <tbody>{draftFields.map((field, index) => {
               const fieldKey = getFieldKey(field);
