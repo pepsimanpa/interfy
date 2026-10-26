@@ -109,7 +109,7 @@ def _fill_cell(tc, text, row, col, width, ids):
     _set_run_text(run, text)
 
 
-def _table(table, ids, table_template):
+def _table(table, ids, table_template, caption_text=None):
     """Create actual hp:tbl / hp:tr / hp:tc objects, not tab-delimited text."""
     if not table.rows:
         return None
@@ -127,27 +127,52 @@ def _table(table, ids, table_template):
     tbl.set("rowCnt", str(len(table.rows)))
     tbl.set("colCnt", str(len(layout)))
     tbl.set("noAdjust", "0")
+    tbl.find("{%s}pos" % HP).set("treatAsChar", "0")
     shape = tbl.find("{%s}sz" % HP)
     shape.set("width", str(width_total))
     shape.set("height", str(2363 + max(0, len(table.rows) - 1) * 1984))
     for tr in list(tbl.findall("{%s}tr" % HP)):
         tbl.remove(tr)
 
+    # A merged Word cell occupies several grid positions but only one HWPX cell.
+    is_data_element = len(table.rows) > 3 and table.rows[0].cells[0].text == "인터페이스명(식별자)"
     for row_index, docx_row in enumerate(table.rows):
-        tr = deepcopy(head_row if row_index == 0 else body_row)
+        is_header = (row_index == 3) if is_data_element else (row_index == 0)
+        tr = deepcopy(head_row if is_header else body_row)
         tr.attrib.pop("row-type", None)
         for existing in list(tr.findall("{%s}tc" % HP)):
             tr.remove(existing)
-        prototype = head_cell if row_index == 0 else body_cell
-        for col_index, (cell, cell_width) in enumerate(zip(docx_row.cells, layout)):
+        prototype = head_cell if is_header else body_cell
+        col_index = 0
+        while col_index < len(layout):
+            cell = docx_row.cells[col_index]
+            span = 1
+            while (col_index + span < len(layout)
+                   and docx_row.cells[col_index + span]._tc is cell._tc):
+                span += 1
             tc = deepcopy(prototype)
-            _fill_cell(
-                tc,
-                "\n".join(p.text for p in cell.paragraphs),
-                row_index, col_index, cell_width, ids
-            )
+            combined_width = sum(layout[col_index:col_index + span])
+            _fill_cell(tc, "\\n".join(p.text for p in cell.paragraphs),
+                       row_index, col_index, combined_width, ids)
+            tc.find("{%s}cellSpan" % HP).set("colSpan", str(span))
             tr.append(tc)
+            col_index += span
         tbl.append(tr)
+
+    if caption_text:
+        caption = etree.Element("{%s}caption" % HP, {
+            "side": "TOP", "fullSz": "0", "width": str(width_total),
+            "gap": "566", "lastWidth": str(width_total),
+        })
+        sublist = deepcopy(body_cell.find("{%s}subList" % HP))
+        for old in list(sublist):
+            sublist.remove(old)
+        caption_p = _paragraph(caption_text, ids)
+        sublist.append(caption_p)
+        caption.append(sublist)
+        # In OWPML the caption follows outMargin and precedes inMargin.
+        out_margin = tbl.find("{%s}outMargin" % HP)
+        tbl.insert(list(tbl).index(out_margin) + 1, caption)
 
     # A table is a control embedded in a paragraph/run in HWPX.
     p = etree.Element("{%s}p" % HP, {
@@ -166,9 +191,13 @@ def _hwpx_section(docx):
     ids = count(1000000100)
     basic = _asset_xml("basic-table.xml").getroot()
 
+    pending_caption = None
     for child in docx.element.body.iterchildren():
         if child.tag == word_qn("w:p"):
             paragraph = Paragraph(child, docx)
+            if paragraph.text.startswith("데이터요소 - "):
+                pending_caption = paragraph.text
+                continue
             is_heading = paragraph.style is not None and (
                 paragraph.style.name.startswith("Heading")
                 or paragraph.style.name.startswith("Title")
@@ -176,7 +205,8 @@ def _hwpx_section(docx):
             root.append(_paragraph(paragraph.text, ids, heading=is_heading))
         elif child.tag == word_qn("w:tbl"):
             table = Table(child, docx)
-            element = _table(table, ids, basic)
+            element = _table(table, ids, basic, caption_text=pending_caption)
+            pending_caption = None
             if element is not None:
                 root.append(element)
 
@@ -191,6 +221,30 @@ def _hwpx_header():
     """
     tree = _asset_xml("Contents/header.xml")
     root = tree.getroot()
+    # Body/caption: Gothic 11pt; table heading: Gothic 10pt;
+    # table contents: Shinmyeongjo 9pt. Existing heading styles stay unchanged.
+    fontfaces = root.find(".//{%s}fontfaces" % HH)
+    langs = ("HANGUL", "LATIN", "HANJA", "JAPANESE", "OTHER", "SYMBOL", "USER")
+    def set_face(char_pr, requested):
+        ref = char_pr.find("{%s}fontRef" % HH)
+        for lang in langs:
+            face_group = fontfaces.find("{%s}fontface[@lang='%s']" % (HH, lang))
+            faces = face_group.findall("{%s}font" % HH)
+            matching = next((font for font in faces if font.get("face") == requested), None)
+            if matching is None:
+                matching = etree.SubElement(face_group, "{%s}font" % HH, {
+                    "id": str(len(faces)), "face": requested,
+                    "type": "TTF", "isEmbedded": "0",
+                })
+                face_group.set("fontCnt", str(len(faces) + 1))
+            ref.set(lang.lower() if lang not in ("HANGUL", "HANJA") else
+                    ("hangul" if lang == "HANGUL" else "hanja"), matching.get("id"))
+    for char_id in ("25", "26", "27"):
+        char_pr = root.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
+        if char_pr is None:
+            raise ValueError("Missing HWPX character style: " + char_id)
+        char_pr.set("height", {"25": "1100", "26": "1000", "27": "900"}[char_id])
+        set_face(char_pr, "신명조" if char_id == "27" else "고딕")
     for char_id, point_size in (("26", 10), ("27", 9)):
         char_pr = root.find(".//{%s}charPr[@id='%s']" % (HH, char_id))
         if char_pr is None:
