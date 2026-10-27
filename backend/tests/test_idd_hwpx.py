@@ -66,7 +66,7 @@ class IddHwpxTests(unittest.TestCase):
             section = etree.fromstring(archive.read("Contents/section0.xml"))
             tables = section.findall(".//{%s}tbl" % HP)
             self.assertEqual(len(word.tables), len(tables))
-            self.assertGreater(len(tables), 5)
+            self.assertEqual(len(tables), 3)  # interface list + 2 data elements
             for hwpx_table, docx_table in zip(tables, word.tables):
                 self.assertEqual(int(hwpx_table.get("colCnt")), len(docx_table.columns))
                 self.assertEqual(int(hwpx_table.get("rowCnt")), len(docx_table.rows))
@@ -76,7 +76,7 @@ class IddHwpxTests(unittest.TestCase):
             section_text = "\n".join((t.text or "") for t in section.findall(".//{%s}t" % HP))
             for value in ("시험체계", "CSU", "AUV", "latitude",
                           "위도 <degree>", "& 각도", "명령상태", "-90~90",
-                          "프로토콜", "통신방법", "사용자 인터페이스 목록"):
+                          "프로토콜", "통신방법"):
                 self.assertIn(value, section_text)
 
     def test_hwpx_heading_ten_point_body_nine_point_and_renumbered_messages(self):
@@ -105,7 +105,7 @@ class IddHwpxTests(unittest.TestCase):
             self.assertEqual(selected_font.get("face"), "맑은 고딕")
             self.assertEqual(body_char.get("height"), "1100")
             for style_id, expected in (("26", "돋움"), ("27", "바탕"),
-                                       ("28", "맑은 고딕"), ("29", "돋움")):
+                                       ("28", "맑은 고딕"), ("29", "맑은 고딕")):
                 char = head.find(".//{%s}charPr[@id='%s']" % (HH, style_id))
                 self.assertEqual(char.get("height"), "1100" if style_id in ("28", "29")
                                  else ("1000" if style_id == "26" else "900"))
@@ -115,6 +115,7 @@ class IddHwpxTests(unittest.TestCase):
             gray_fill = head.find(".//{%s}borderFill[@id='9']" % HH)
             gray_brush = gray_fill.find(".//{http://www.hancom.co.kr/hwpml/2011/core}winBrush")
             self.assertEqual(gray_brush.get("faceColor"), "#D6D6D6")
+            self.assertEqual(head.find(".//{%s}charPr[@id='29']" % HH).get("textColor"), "#000000")
 
             section = etree.fromstring(archive.read("Contents/section0.xml"))
             body_paragraph = next(
@@ -153,6 +154,14 @@ class IddHwpxTests(unittest.TestCase):
             self.assertEqual(len(captions), 3)
             self.assertTrue(all(c.get("side") == "TOP" for c in captions))
             self.assertIn("데이터요소 - IE-0001", "".join(captions[0].itertext()))
+            list_caption = next(
+                p for p in section.findall("{%s}p" % HP)
+                if "표 5·6 통합 인터페이스 목록" in "".join(p.itertext())
+            )
+            self.assertEqual(list_caption.get("paraPrIDRef"), "18")
+            self.assertEqual(list_caption.find("{%s}run" % HP).get("charPrIDRef"), "29")
+            self.assertNotIn("사용자 인터페이스 목록",
+                             " ".join(x.text or "" for x in section.findall(".//{%s}t" % HP)))
             for caption in captions:
                 paragraph = caption.find(".//{%s}p" % HP)
                 self.assertEqual(paragraph.get("paraPrIDRef"), "18")
@@ -204,6 +213,9 @@ class IddHwpxTests(unittest.TestCase):
                 ["IE-0001", "IE-0002", "IE-0003"],
             )
             self.assertTrue(detail_headings[0].startswith("3.2.1.1 IE-0001("))
+            text_paragraphs = ["".join(p.itertext()) for p in section.findall("{%s}p" % HP)]
+            self.assertFalse(any(re.match(r"^3\\.2\\.\\d+\\.\\d+ .*?(?:통신방법|프로토콜|물리적 호환성)",
+                                          line) for line in text_paragraphs))
 
 
     def test_missing_values_are_blank_and_user_input_is_xml_escaped(self):
@@ -218,12 +230,9 @@ class IddHwpxTests(unittest.TestCase):
             text = " ".join(t.text or "" for t in root.findall(".//{%s}t" % HP))
             self.assertIn("상태<&>정보", text)
             self.assertIn("CSU, MDV", text)
-            # The unknown communication category stays an editable empty cell.
-            rows = root.findall(".//{%s}tr" % HP)
-            self.assertTrue(any(
-                "통신 구분명(식별자)" in "".join(tc.itertext())
-                for row in rows for tc in row.findall("{%s}tc" % HP)
-            ))
+            # The redundant communication/protocol detail sections are absent.
+            self.assertNotIn("통신 구분명(식별자)", text)
+            self.assertNotIn("물리적 호환성 등 기타 특성", text)
             self.assertIn(b"&lt;", raw)
             self.assertIn(b"&amp;", raw)
 
