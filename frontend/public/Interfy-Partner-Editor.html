@@ -55,7 +55,7 @@ td .controls{display:flex;gap:3px}td .controls button{padding:5px}
   </div>
   <input id="file" type="file" accept=".json,application/json" hidden>
 </header>
-<div class="notice">로컬 브라우저에서만 실행됩니다. 서버 통신이 없으며 JSON 파일을 직접 열고 저장합니다. 수정 사항은 저장 버튼을 누르기 전까지 메모리에만 있습니다.</div>
+<div class="notice">인터넷 연결 없이 동작합니다. Chrome·Edge에서는 JSON 저장 시 열었던 원본 파일에 덮어씁니다(브라우저 쓰기 권한 필요). 미지원 브라우저에서는 파일 선택 또는 다운로드로 저장합니다.</div>
 <div class="layout">
   <aside>
     <nav><button class="active" id="tab-nodes">노드</button><button id="tab-messages">메시지 / Enum</button></nav>
@@ -68,7 +68,7 @@ td .controls{display:flex;gap:3px}td .controls button{padding:5px}
 <script>
 'use strict';
 (function(){
-var data=null, tab='nodes', active=-1, dirty=false, filename='interfy-partner-edited.json';
+var data=null, tab='nodes', active=-1, dirty=false, filename='interfy-partner-edited.json', fileHandle=null, saving=false;
 var basic=['bool','char','int8','uint8','int16','uint16','int32','uint32','int64','uint64','float','double'];
 var enumTypes=['int8','uint8','int16','uint16','int32','uint32','int64','uint64'];
 var ident=/^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -94,11 +94,33 @@ function norm(dataObject){
  dataObject.labels=Array.isArray(dataObject.labels)?dataObject.labels:[];
  dataObject.project=dataObject.project||{name:'Partner project'};
 }
-async function load(file){
+async function load(file,handle){
  if(dirty&&!confirm('저장하지 않은 변경사항이 있습니다. 다른 파일을 열까요?'))return;
  try{
-  var text=await file.text(),next=JSON.parse(text);norm(next);data=next;dirty=false;active=-1;filename=file.name.replace(/\.json$/i,'')+'-edited.json';render();status('불러오기 완료: '+file.name,'message');
- }catch(e){alert('파일을 열 수 없습니다.\\n'+e.message);}
+  var text=await file.text(),next=JSON.parse(text);
+  norm(next);
+  // Keep the previous handle if the new JSON cannot be read or parsed.
+  data=next;fileHandle=handle||null;dirty=false;active=-1;
+  filename=file.name;render();
+  status('불러오기 완료: '+filename+(fileHandle?' · 원본 덮어쓰기 가능':' · 저장 시 파일 선택/다운로드'),'message');
+ }catch(e){alert('파일을 열 수 없습니다.\n'+e.message);}
+}
+async function openProject(){
+ if(typeof window.showOpenFilePicker!=='function'||!window.isSecureContext){
+  $('file').click();return;
+ }
+ try{
+  // Obtain a handle in the direct click interaction for overwriting on save.
+  var handles=await window.showOpenFilePicker({
+   types:[{description:'Interfy JSON',accept:{'application/json':['.json']}}],
+   multiple:false
+  });
+  if(handles&&handles[0])await load(await handles[0].getFile(),handles[0]);
+ }catch(e){
+  if(e.name==='AbortError')return;
+  status('원본 파일을 열 수 없습니다. 브라우저 파일 접근 설정을 확인하세요.','error');
+  alert('원본 파일을 열 수 없습니다.\n'+e.message);
+ }
 }
 function changeTab(next){tab=next;active=-1;render();}
 function render(){
@@ -278,18 +300,52 @@ function validate(){
  Object.keys(edges).forEach(visit);
  return errors;
 }
-function save(){
+function downloadCopy(contents){
+ var blob=new Blob([contents],{type:'application/json;charset=utf-8'});
+ var url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=filename;
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(function(){URL.revokeObjectURL(url);},1000);
+}
+async function writeToHandle(handle,contents){
+ var writable=await handle.createWritable();
+ await writable.write(contents);
+ await writable.close();
+}
+async function save(){
  if(!data){alert('JSON 파일을 먼저 열어 주세요.');return;}
+ if(saving)return;
  var errors=validate();
  if(errors.length){alert('검증 오류 ('+errors.length+'건)\n'+errors.slice(0,15).join('\n')+(errors.length>15?'\n...':''));status('검증 오류 '+errors.length+'건','error');return;}
  data.messages.forEach(function(m,i){m.order=i+1;m.fields.forEach(function(f,j){f.order=j+1;});m.enum_values.forEach(function(v,j){v.order=j+1;});m.protocols=(m.protocol||'').split(/[,;\n|+]/).map(function(x){return x.trim();}).filter(Boolean);});
- var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'});
- var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;
- document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},1000);
- dirty=false;stats();status('검증 후 JSON 파일로 저장했습니다.','message');
+ var contents=JSON.stringify(data,null,2);
+ saving=true;$('save').disabled=true;
+ try{
+  if(fileHandle){
+   // The original file handle is reused, not a new filename/download.
+   await writeToHandle(fileHandle,contents);
+   dirty=false;stats();status('원본 JSON에 덮어썼습니다: '+filename,'message');
+  }else if(typeof window.showSaveFilePicker==='function'&&window.isSecureContext){
+   // A file input does not grant permission to overwrite. Ask for a path.
+   var chosen=await window.showSaveFilePicker({
+    suggestedName:filename,
+    types:[{description:'Interfy JSON',accept:{'application/json':['.json']}}]
+   });
+   await writeToHandle(chosen,contents);
+   fileHandle=chosen;filename=chosen.name||filename;
+   dirty=false;stats();status('선택한 JSON에 저장했습니다: '+filename,'message');
+  }else{
+   downloadCopy(contents);
+   dirty=false;stats();status('다운로드로 저장했습니다. 원본 파일은 덮어쓰지 않았습니다.','warn');
+  }
+ }catch(e){
+  // On failure retain the current content and dirty state; never fake success.
+  if(e.name==='AbortError')status('저장을 취소했습니다. 수정 내용은 유지됩니다.','warn');
+  else{status('저장 실패: 수정 내용은 유지됩니다.','error');alert('JSON 파일을 저장할 수 없습니다.\n'+e.message);}
+ }finally{saving=false;$('save').disabled=false;}
 }
-$('open').addEventListener('click',function(){$('file').click();});
-$('file').addEventListener('change',function(e){if(e.target.files[0])load(e.target.files[0]);e.target.value='';});
+$('open').addEventListener('click',openProject);
+$('file').addEventListener('change',function(e){if(e.target.files[0])load(e.target.files[0],null);e.target.value='';});
 $('save').addEventListener('click',save);
 $('validate').addEventListener('click',function(){var errors=validate();alert(errors.length?'검증 오류 '+errors.length+'건\n'+errors.join('\n'):'검증 완료: 오류 없음');status(errors.length?'검증 오류 '+errors.length+'건':'검증 완료: 오류 없음',errors.length?'error':'message');});
 $('tab-nodes').addEventListener('click',function(){changeTab('nodes');});
