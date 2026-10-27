@@ -106,17 +106,20 @@ class IddDocxTests(unittest.TestCase):
         for value in ["3.1 인터페이스간 연동 개념", "3.2 인터페이스간 연동 설계",
                       "CSU", "AUV", "항법정보", "임무명령", "latitude",
                       "deg", "-90~90", "위도", "100 ms", "4 Byte", "UDP", "DDS",
-                      "사용자 인터페이스 목록", "통신방법", "프로토콜"]:
+                      "통신방법", "프로토콜"]:
             assert value in text
         assert doc.tables
         detail = next(table for table in doc.tables
                       if table.rows[0].cells[0].text == "인터페이스명(식별자)")
-        self.assertEqual(detail.rows[0].cells[0]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "D6D6D6")
+        self.assertEqual(detail.rows[0].cells[0]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "E8EDF3")
         self.assertEqual(detail.rows[0].cells[2]._tc.tcPr.find(qn("w:shd")), None)
-        self.assertEqual(detail.rows[3].cells[6]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "D6D6D6")
+        self.assertEqual(detail.rows[3].cells[6]._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")), "E8EDF3")
         self.assertEqual(detail.rows[4].cells[6].text, "위도")
-        self.assertEqual(detail.rows[3].cells[0].paragraphs[0].runs[0].font.size.pt, 10)
-        self.assertEqual(detail.rows[4].cells[0].paragraphs[0].runs[0].font.size.pt, 9)
+        self.assertEqual(detail.rows[3].cells[0].paragraphs[0].runs[0].font.size.pt, 8)
+        self.assertEqual(detail.rows[4].cells[0].paragraphs[0].runs[0].font.size.pt, 8)
+        self.assertTrue(detail.rows[3].cells[0].paragraphs[0].runs[0].bold)
+        self.assertFalse(detail.rows[4].cells[0].paragraphs[0].runs[0].bold)
+        self.assertEqual(detail.rows[3].cells[0].paragraphs[0].runs[0].font.name, "맑은 고딕")
 
 
     def test_idd_does_not_infer_missing_transport_details_or_pairwise_edges(self):
@@ -138,12 +141,9 @@ class IddDocxTests(unittest.TestCase):
             "IE-0001(A(MSG_1))", "IE-0002(A(MSG_1))"
         ]
         assert all(row.cells[1].text == "" for row in interface_table.rows[1:])
-        # Unknown communication fields stay blank, rather than fabricated.
-        comm_table = next(
-            table for table in doc.tables
-            if table.rows[1].cells[0].text == "통신 구분명(식별자)"
-        )
-        assert comm_table.rows[1].cells[1].text == ""
+        # Communication and protocol tables are intentionally excluded.
+        assert not any(table.rows[0].cells[0].text == "통신 구분명(식별자)"
+                       for table in doc.tables)
         assert "3a" not in text
 
 
@@ -178,6 +178,47 @@ class IddDocxTests(unittest.TestCase):
         assert "IE-0004(상태보고(MSG_3))" in text
         self.assert_sequential_idd_elements(doc, ["IE-0001", "IE-0002", "IE-0003", "IE-0004", "IE-0005"])
 
+
+
+    def test_document_keeps_only_interface_list_and_data_element_details(self):
+        project = SimpleNamespace(name="TEST")
+        msg = message(1, "상태보고", tx=("CSU",), rx=("AUV",),
+                      protocol="TCP", fields=[field("status")])
+        doc = Document(BytesIO(render_idd_docx(project, [msg])))
+        paragraphs = [p.text for p in doc.paragraphs]
+        assert "3.1.1.1 인터페이스 목록" in paragraphs
+        assert not any("사용자 인터페이스 목록" in text for text in paragraphs)
+        assert any(text.startswith("3.2.1.1 IE-0001(") for text in paragraphs)
+        assert not any(text.startswith("3.2.") and any(
+            term in text for term in ("통신방법", "프로토콜", "물리적 호환성")
+        ) for text in paragraphs)
+        assert len(doc.tables) == 2  # interface list + single data-element table
+        assert not any("통신 구분명(식별자)" in cell.text
+                       for table in doc.tables for row in table.rows for cell in row.cells)
+        for paragraph in doc.paragraphs:
+            if paragraph.text.startswith(("표 ", "데이터요소 - ")):
+                for run in paragraph.runs:
+                    assert run.font.name == "맑은 고딕"
+                    assert run.font.size.pt == 11
+                    assert run.font.color.rgb == __import__("docx").shared.RGBColor(0, 0, 0)
+
+    def test_data_element_word_table_fits_17cm_page_content_width(self):
+        from docx.shared import Cm
+        project = SimpleNamespace(name="TEST")
+        msg = message(1, "긴 이름 데이터요소", tx=("CSU",), rx=("AUV",),
+                      fields=[field("very_long_field_name", description="a long explanation")])
+        doc = Document(BytesIO(render_idd_docx(project, [msg])))
+        detail = next(table for table in doc.tables
+                      if table.rows[0].cells[0].text == "인터페이스명(식별자)")
+        usable = doc.sections[0].page_width - doc.sections[0].left_margin - doc.sections[0].right_margin
+        grid_widths = [col.width for col in detail.columns]
+        assert abs(sum(grid_widths) - usable) < 10000  # rounding in EMU
+        assert all(cell.width <= usable for row in detail.rows for cell in row.cells)
+        assert detail.rows[0].cells[0].width == sum(grid_widths[:2])
+        assert detail.rows[0].cells[2].width == sum(grid_widths[2:])
+        assert detail.rows[1].cells[2].width == sum(grid_widths[2:4])
+        assert detail.rows[1].cells[4].width == sum(grid_widths[4:6])
+        assert detail.rows[4].cells[6].width == grid_widths[6]
 
     def test_idd_generates_template_when_project_is_empty(self):
         doc = Document(BytesIO(render_idd_docx(SimpleNamespace(name="Empty"), [])))
