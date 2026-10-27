@@ -12,12 +12,15 @@ set "ENGINE=%~2"
 if "%ACTION%"=="" set "ACTION=up"
 if "%ENGINE%"=="" set "ENGINE=moby"
 
-where rdctl >nul 2>&1
-if errorlevel 1 (
-  echo ERROR: Rancher Desktop CLI "rdctl" not found.
-  echo Install and start Rancher Desktop, then open a NEW terminal.
-  goto error
+rem Rancher Desktop may not register its Windows CLIs in PATH.
+rem Prefer Rancher's own CLI locations when invoking Docker/nerdctl Compose.
+if exist "%ProgramFiles%\Rancher Desktop\resources\resources\win32\bin\" (
+  set "PATH=%ProgramFiles%\Rancher Desktop\resources\resources\win32\bin;%PATH%"
 )
+if exist "%USERPROFILE%\.rd\bin\" (
+  set "PATH=%USERPROFILE%\.rd\bin;%PATH%"
+)
+rem rdctl is not needed to run Interfy Compose.
 
 if /i "%ENGINE%"=="moby" (
   set "CLI=docker"
