@@ -214,11 +214,15 @@ class IddDocxTests(unittest.TestCase):
         grid_widths = [col.width for col in detail.columns]
         assert abs(sum(grid_widths) - usable) < 10000  # rounding in EMU
         assert all(cell.width <= usable for row in detail.rows for cell in row.cells)
-        assert detail.rows[0].cells[0].width == sum(grid_widths[:2])
-        assert detail.rows[0].cells[2].width == sum(grid_widths[2:])
-        assert detail.rows[1].cells[2].width == sum(grid_widths[2:4])
-        assert detail.rows[1].cells[4].width == sum(grid_widths[4:6])
-        assert detail.rows[4].cells[6].width == grid_widths[6]
+        self.assertEqual(detail._tbl.tblPr.find(qn("w:tblW")).get(qn("w:type")), "dxa")
+        assert abs(int(detail._tbl.tblPr.find(qn("w:tblW")).get(qn("w:w")))
+                   - round(usable / 635)) <= 2
+        # Individual twip rounding can make merged-cell widths differ slightly.
+        assert abs(detail.rows[0].cells[0].width - sum(grid_widths[:2])) < 10000
+        assert abs(detail.rows[0].cells[2].width - sum(grid_widths[2:])) < 10000
+        assert abs(detail.rows[1].cells[2].width - sum(grid_widths[2:4])) < 10000
+        assert abs(detail.rows[1].cells[4].width - sum(grid_widths[4:6])) < 10000
+        assert abs(detail.rows[4].cells[6].width - grid_widths[6]) < 10000
 
     def test_idd_generates_template_when_project_is_empty(self):
         doc = Document(BytesIO(render_idd_docx(SimpleNamespace(name="Empty"), [])))
