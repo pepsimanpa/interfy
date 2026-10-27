@@ -225,6 +225,14 @@ def _data_element_table(document, message, identifier, sender):
     table = document.add_table(rows=4, cols=len(columns))
     table.style = "Table Grid"
     table.autofit = False
+    # Fix the preferred table width as well as its grid and cell widths.
+    # An automatic tblW can cause a merged table to grow beyond the margins.
+    tbl_width = table._tbl.tblPr.find(qn("w:tblW"))
+    if tbl_width is None:
+        tbl_width = OxmlElement("w:tblW")
+        table._tbl.tblPr.insert(0, tbl_width)
+    tbl_width.set(qn("w:type"), "dxa")
+    tbl_width.set(qn("w:w"), str(Cm(sum(widths)).twips))
     for idx, width in enumerate(widths):
         table.columns[idx].width = Cm(width)
 
