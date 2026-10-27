@@ -206,6 +206,10 @@ def _hwpx_section(docx):
             if paragraph.text.startswith("데이터요소 - "):
                 pending_caption = paragraph.text
                 continue
+            if paragraph.text.startswith("표 5·6 "):
+                # Caption for the summary interface list: centered, black 11pt.
+                root.append(_paragraph(paragraph.text, ids, caption=True))
+                continue
             style_name = paragraph.style.name if paragraph.style is not None else ""
             is_title = style_name.startswith("Title")
             is_heading = style_name.startswith("Heading")
@@ -271,12 +275,12 @@ def _hwpx_header():
 
     for style_id, family, is_bold in (
         ("28", "맑은 고딕", True),
-        ("29", "돋움", False),
+        ("29", "맑은 고딕", False),
     ):
         new_style = deepcopy(base)
         new_style.set("id", style_id)
         new_style.set("height", "1100")
-        new_style.set("textColor", "#0000FF")
+        new_style.set("textColor", "#000000" if style_id == "29" else "#0000FF")
         set_face(new_style, family)
         if is_bold:
             etree.SubElement(new_style, "{%s}bold" % HH)
