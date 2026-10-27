@@ -15,6 +15,21 @@
 - - 프로젝트 영문약어 기반 `.h`, `.idl` 다운로드
 - 이력 관리: 메시지 변경 이력 및 백업 이력
 
+## Rancher Desktop (Windows, Docker Desktop 대체)
+
+**Docker Desktop 없이 Rancher Desktop에서 기존 Interfy 컨테이너 3개를 실행할 수 있습니다.**
+Rancher Desktop을 설치한 뒤 Container Engine을 **dockerd (moby)**로 설정하고
+저장소 루트에서 아래 명령을 실행하세요.
+
+```bat
+rancher.cmd up moby
+```
+
+`containerd` 엔진을 사용할 경우 `rancher.cmd up containerd`도 지원합니다.
+기존 Docker Desktop DB 볼륨은 Rancher Desktop으로 자동 이전되지 않으니
+전환 전에 반드시 백업하세요. 설정, 사용법, 데이터 이전 방법은
+**[RANCHER_DESKTOP.md](RANCHER_DESKTOP.md)**를 참고하세요.
+
 ## 실행 방법
 
 ```bash
