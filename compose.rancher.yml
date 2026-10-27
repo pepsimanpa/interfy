@@ -1,0 +1,7 @@
+# Rancher Desktop override. Combine with docker-compose.yml.
+# Rancher Desktop starts with its own image store, so the custom
+# interfy-postgres:16 tag from prior Docker Desktop bundles is not present.
+# postgres:16 can be pulled from the registry at initial startup.
+services:
+  db:
+    image: postgres:16
