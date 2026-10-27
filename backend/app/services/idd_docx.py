@@ -182,9 +182,9 @@ def _caption(document, text):
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = paragraph.add_run(text)
     run.bold = False
-    run.font.name = "돋움"
+    run.font.name = "맑은 고딕"
     run.font.size = Pt(11)
-    run.font.color.rgb = RGBColor(0, 0, 255)
+    run.font.color.rgb = RGBColor(0, 0, 0)
 
 
 def _heading(document, text, level):
@@ -210,21 +210,37 @@ def _field_detail(field):
 
 
 def _data_element_table(document, message, identifier, sender):
-    """One integrated metadata + field table, matching IDD sample table 8."""
+    """Use one page-width IDD table with the same Word styles as other tables.
+
+    Setting grid-column widths alone does not resize python-docx's
+    pre-existing cell widths. In particular, horizontal cell merges can then
+    add up the *default* equal-width cells and grow past the page margins.
+    Set every cell width before merging, then apply merged widths explicitly.
+    """
     element = _data_element_label(message, identifier)
     _caption(document, "데이터요소 - " + element)
     columns = ["요소명", "타입", "크기", "단위", "보안", "범위", "요소내용"]
+    # The surrounding document is A4 with 2cm margins (17cm usable width).
     widths = [2.0, 1.35, 1.0, 1.15, 1.05, 2.35, 8.1]
-    table = document.add_table(rows=4, cols=7)
+    table = document.add_table(rows=4, cols=len(columns))
     table.style = "Table Grid"
     table.autofit = False
     for idx, width in enumerate(widths):
         table.columns[idx].width = Cm(width)
 
-    def merged_value(row, first, last, value):
-        cell = table.cell(row, first).merge(table.cell(row, last))
-        cell.text = _text(value)
-        return cell
+    def set_row_widths(row):
+        for index, cell in enumerate(row.cells):
+            cell.width = Cm(widths[index])
+
+    for row in table.rows:
+        set_row_widths(row)
+
+    def merged_value(row_index, first, last, value):
+        # All underlying cells already have the correct widths.
+        merged = table.cell(row_index, first).merge(table.cell(row_index, last))
+        merged.width = Cm(sum(widths[first:last + 1]))
+        merged.text = _text(value)
+        return merged
 
     merged_value(0, 0, 1, "인터페이스명(식별자)")
     merged_value(0, 2, 6, element)
@@ -239,40 +255,42 @@ def _data_element_table(document, message, identifier, sender):
 
     for index, heading in enumerate(columns):
         table.cell(3, index).text = heading
-        _shade(table.cell(3, index), "D6D6D6")
-
-    # IDD template table 8: shade the metadata *labels* as well as
-    # the seven-column field header (the values remain white).
-    for row_index, column_indexes in ((0, (0,)), (1, (0, 4)), (2, (0, 4))):
-        for column_index in column_indexes:
-            _shade(table.cell(row_index, column_index), "D6D6D6")
 
     fields = sorted(getattr(message, "fields", []) or [],
                     key=lambda field: (getattr(field, "order_index", 0) or 0,
                                        getattr(field, "id", 0) or 0))
     for field in fields:
-        cells = table.add_row().cells
+        row = table.add_row()
+        set_row_widths(row)
         values = [_text(getattr(field, "name", "")), _field_type(field), _size(field),
                   _text(getattr(field, "unit", "")), "",
                   _text(getattr(field, "value_range", "")), _field_detail(field)]
         for index, value in enumerate(values):
-            cells[index].text = value
+            row.cells[index].text = value
 
+    # Metadata label cells and the field-header row reuse the same light-blue
+    # fill, bold 8pt type and alignment used by the ordinary Word tables.
     for row_index, row in enumerate(table.rows):
+        seen = set()
         for index, cell in enumerate(row.cells):
+            if id(cell._tc) in seen:
+                continue  # merged cells appear multiple times in row.cells
+            seen.add(id(cell._tc))
+            label = (row_index == 3 or
+                     (row_index == 0 and index == 0) or
+                     (row_index in (1, 2) and index in (0, 4)))
+            if label:
+                _shade(cell, "E8EDF3")
             cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
             for paragraph in cell.paragraphs:
                 paragraph.paragraph_format.space_before = Pt(0)
                 paragraph.paragraph_format.space_after = Pt(0)
+                if label:
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in paragraph.runs:
-                    label = (row_index == 3 or
-                             (row_index == 0 and index == 0) or
-                             (row_index in (1, 2) and index in (0, 4)))
-                    run.font.name = "돋움" if label else "바탕"
-                    run.font.size = Pt(10 if label else 9)
-                    run.bold = False
-                    if label:
-                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run.font.name = "맑은 고딕"
+                    run.font.size = Pt(8)
+                    run.bold = bool(label)
     _repeat_header(table.rows[3])
     document.add_paragraph()
 
@@ -348,42 +366,22 @@ def render_idd_docx(project, messages) -> bytes:
              _data_element_label(message, identifier)]
             for sender, message, identifier in outgoing_entries],
            [1.3, 1.8, 2.3, 1.8, 1.2, 1.7, 6.9])
-    _heading(document, "3.1.1.2 사용자 인터페이스 목록", 3)
-    _caption(document, "표 7 사용자 인터페이스 목록")
-    _table(document,
-           ["식별자", "장비명", "기능명", "주사용자", "인터페이스 방법", "사용자 인터페이스"],
-           [], [2.0, 2.5, 3.0, 2.3, 3.5, 3.7])
-
     _heading(document, "3.2 인터페이스간 연동 설계", 1)
     if not sequenced_relations:
         document.add_paragraph("등록된 메시지가 없습니다.")
     for number, ((tx, rx), entries) in enumerate(sequenced_relations.items(), start=1):
-        group = relations[(tx, rx)]
         left = ", ".join(tx)
         right = ", ".join(rx)
         relation_name = " → ".join(part for part in (left, right) if part) or "연동 노드 미지정"
         _heading(document, "3.2.%d %s" % (number, relation_name), 2)
 
-        sub = 1
-        for sender, message, identifier in entries:
+        # This export intentionally contains data-element details only.
+        # Do not append communication, protocol or physical-compatibility
+        # sections, or their now-unused placeholder tables.
+        for sub, (sender, message, identifier) in enumerate(entries, start=1):
             element = _data_element_label(message, identifier)
             _heading(document, "3.2.%d.%d %s 데이터요소" % (number, sub, element), 3)
             _data_element_table(document, message, identifier, sender)
-            sub += 1
-
-        _heading(document, "3.2.%d.%d 통신방법" % (number, sub), 3)
-        _communication_table(document, tx, rx)
-        sub += 1
-
-        protocols = _protocol_names(group) or [""]
-        for protocol in protocols:
-            _heading(document, "3.2.%d.%d %s 프로토콜" % (
-                number, sub, protocol or "프로토콜"), 3)
-            _protocol_table(document, protocol, rx)
-            sub += 1
-
-        _heading(document, "3.2.%d.%d 물리적 호환성 등 기타 특성" % (number, sub), 3)
-        document.add_paragraph("")
 
     buffer = BytesIO()
     document.save(buffer)
