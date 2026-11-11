@@ -25,6 +25,10 @@ import {
 import './style.css';
 import { nextNodePairSelection, isRelationBetweenNodes, isMessageInRelations } from './nodePair.js';
 import {
+  NODE_DIRECTION_ALL, NODE_DIRECTION_TX, NODE_DIRECTION_RX,
+  relationMatchesNodeDirection, messageMatchesNodeDirection, nodeDirectionLabel,
+} from './nodeDirection.js';
+import {
   FIELD_COLUMN_KEYS, FIELD_COLUMN_HEADERS, FIELD_COLUMN_MIN_WIDTHS,
   FIELD_COLUMN_STORAGE_KEY, normalizeFieldColumnWidths, resizeFieldColumn, fieldColumnTotalWidth,
 } from './fieldColumns.js';
@@ -790,6 +794,7 @@ function MessageManagementPage({ api, me, projectId, onBackToProjects, onLogout,
 function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels = [], integrationTargets = [], query = '', messageForm, setMessageForm, onCreateMessage, selectedMessage, setSelectedMessage, onCloseSelectedMessage, onSelectMessage, onDeleteMessage, onCopyMessage, onCreateLabel, onUpdateLabel, onDeleteLabel, onCreateTarget, onUpdateTarget, onDeleteTarget, onOpenPartialUpdate, onReload, onDirtyChange }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [secondaryDeviceId, setSecondaryDeviceId] = useState(null);
+  const [nodeDirection, setNodeDirection] = useState(NODE_DIRECTION_ALL);
   const [selectedRelationKey, setSelectedRelationKey] = useState(null);
   const [viewerMode, setViewerMode] = useState(() => localStorage.getItem('interfy-viewer-mode') === 'message' ? 'message' : 'node');
   const [messageNameQuery, setMessageNameQuery] = useState('');
@@ -913,6 +918,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     setViewerMode(nextMode);
     setSelectedDeviceId(null);
     setSecondaryDeviceId(null);
+    setNodeDirection(NODE_DIRECTION_ALL);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
     if (nextMode === 'message' && !selectedViewerMessageId && messageViewerMessages[0]) {
@@ -946,20 +952,22 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     return [...map.values()].map(item => ({ ...item, protocols: [...item.protocols] }));
   }, [filteredForGraph]);
 
-  const selectedRelation = relationMap.find(relation => relation.key === selectedRelationKey) || null;
   const deviceMap = useMemo(() => new Map(integrationTargets.map(target => [Number(target.id), target])), [integrationTargets]);
 
-  // One node: show all directly connected nodes. Two nodes: show only A↔B links.
+  // Direction is always relative to the first selected node.
+  // Filtering both the graph and table keeps the two views in sync.
   const graphRelations = useMemo(() => {
     if (!selectedDeviceId) return relationMap;
-    if (secondaryDeviceId) {
-      return relationMap.filter(relation => isRelationBetweenNodes(relation, selectedDeviceId, secondaryDeviceId));
-    }
-    return relationMap.filter(relation =>
-      Number(relation.fromId) === Number(selectedDeviceId) ||
-      Number(relation.toId) === Number(selectedDeviceId)
-    );
-  }, [relationMap, selectedDeviceId, secondaryDeviceId]);
+    return relationMap.filter(relation => {
+      const connected = secondaryDeviceId
+        ? isRelationBetweenNodes(relation, selectedDeviceId, secondaryDeviceId)
+        : Number(relation.fromId) === Number(selectedDeviceId) ||
+          Number(relation.toId) === Number(selectedDeviceId);
+      return connected && relationMatchesNodeDirection(relation, selectedDeviceId, nodeDirection);
+    });
+  }, [relationMap, selectedDeviceId, secondaryDeviceId, nodeDirection]);
+
+  const selectedRelation = graphRelations.find(relation => relation.key === selectedRelationKey) || null;
 
   const graphTargets = useMemo(() => {
     if (!selectedDeviceId) return integrationTargets;
@@ -1049,8 +1057,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       if (!isMessageInRelations(message, graphRelations)) return false;
     } else if (selectedDeviceId) {
       if (isEnumDefinition(message)) return false;
-      const related = [...(message.tx_targets || []), ...(message.rx_targets || [])].some(target => Number(target.id) === Number(selectedDeviceId));
-      if (!related) return false;
+      if (!messageMatchesNodeDirection(message, selectedDeviceId, nodeDirection)) return false;
     }
     if (!isEnumDefinition(message) && protocolFilter !== 'ALL' && !messageHasProtocol(message, protocolFilter)) return false;
     if (isEnumDefinition(message) && protocolFilter !== 'ALL') return false;
@@ -1058,7 +1065,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!messageMatchesTextQuery(message, query)) return false;
     if (!messageMatchesNameQuery(message, messageNameQuery)) return false;
     return true;
-  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, graphRelations, protocolFilter, tagFilter, query, messageNameQuery]);
+  }), [messages, viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, graphRelations, nodeDirection, protocolFilter, tagFilter, query, messageNameQuery]);
 
   const canReorder = viewerMode === 'node' && !selectedDeviceId && !selectedRelation && !unlinkedOnly && protocolFilter === 'ALL' && tagFilter === 'ALL' && !String(query || '').trim() && !messageNameQuery.trim();
 
@@ -1083,15 +1090,17 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       const second = deviceMap.get(Number(secondaryDeviceId));
       return {
         title: `${first?.name || '노드'} ↔ ${second?.name || '노드'}`,
-        detail: '선택한 두 노드 사이의 송신·수신 메시지 (양방향)',
+        detail: nodeDirection === NODE_DIRECTION_ALL
+          ? '선택한 두 노드 사이의 송신·수신 메시지 (양방향)'
+          : `첫 번째 노드(${first?.name || '노드'}) 기준 ${nodeDirectionLabel(nodeDirection)} 메시지`,
       };
     }
     if (selectedDeviceId) {
       const device = deviceMap.get(Number(selectedDeviceId));
-      return { title: device?.name || '노드', detail: '선택한 노드의 송신 + 수신 메시지' };
+      return { title: device?.name || '노드', detail: `선택한 노드의 ${nodeDirectionLabel(nodeDirection)} 메시지` };
     }
     return { title: '전체 메시지', detail: '노드나 관계를 선택하면 이 목록이 자동으로 필터링됩니다.' };
-  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, deviceMap]);
+  }, [viewerMode, selectedViewerMessage, unlinkedOnly, selectedRelation, selectedDeviceId, secondaryDeviceId, nodeDirection, deviceMap]);
 
   function selectDevice(targetId) {
     if (selectedMessage && onCloseSelectedMessage && !onCloseSelectedMessage()) return;
@@ -1116,6 +1125,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedDeviceId(null);
     setSecondaryDeviceId(null);
+    setNodeDirection(NODE_DIRECTION_ALL);
     setSelectedRelationKey(null);
     setUnlinkedOnly(false);
   }
@@ -1125,6 +1135,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
     if (!selectedMessage) setSelectedMessage(null);
     setSelectedDeviceId(null);
     setSecondaryDeviceId(null);
+    setNodeDirection(NODE_DIRECTION_ALL);
     setSelectedRelationKey(null);
     setUnlinkedOnly(true);
   }
@@ -1197,6 +1208,7 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
   async function handleTargetMerged() {
     setSelectedDeviceId(null);
     setSecondaryDeviceId(null);
+    setNodeDirection(NODE_DIRECTION_ALL);
     setSelectedRelationKey(null);
     await onReload?.();
   }
@@ -1342,6 +1354,11 @@ function InterfaceDesignPanel({ api, project, messages = [], setMessages, labels
       selectedDeviceId={selectedDeviceId}
       secondaryDeviceId={secondaryDeviceId}
       selectedRelationKey={selectedRelationKey}
+      nodeDirection={nodeDirection}
+      onNodeDirectionChange={direction => {
+        setNodeDirection(direction);
+        setSelectedRelationKey(null);
+      }}
       protocolFilter={protocolFilter}
       setProtocolFilter={setProtocolFilter}
       tagFilter={tagFilter}
@@ -1706,7 +1723,7 @@ function MessageCenteredVisualization({ messages = [], messageNameQuery = '', on
   );
 }
 
-function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, secondaryDeviceId, selectedRelationKey, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
+function DesignVisualizationTop({ integrationTargets, visibleTargets = integrationTargets, relationMap, positions, selectedDeviceId, secondaryDeviceId, selectedRelationKey, nodeDirection, onNodeDirectionChange, protocolFilter, setProtocolFilter, tagFilter, setTagFilter, labels, protocolOptions, unlinkedCount, unlinkedOnly, onSelectDevice, onSelectRelation, onShowAll, onShowUnlinked, onOpenReferences, onEditNode, onOpenPartialUpdate, relationPath, relationLabelPosition, relationSourcePosition, showProtocol, setShowProtocol, showMessageCount, setShowMessageCount, onChangeViewerMode }) {
   // Draw the selected relation last so its line/label is never hidden by another relation.
   const renderRelations = [...relationMap].sort((a, b) => Number(a.key === selectedRelationKey) - Number(b.key === selectedRelationKey));
   const focusView = Boolean(selectedDeviceId);
@@ -1819,6 +1836,16 @@ function DesignVisualizationTop({ integrationTargets, visibleTargets = integrati
           <DesignViewModeToggle mode="node" onChange={onChangeViewerMode} />
           <div className="design-filter-field"><span>프로토콜</span><select value={protocolFilter} onChange={e => setProtocolFilter(e.target.value)}><option value="ALL">전체</option>{protocolOptions.map(protocol => <option key={protocol} value={protocol}>{protocol}</option>)}</select></div>
           <div className="design-filter-field"><span>태그</span><select value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="ALL">전체</option><option value="NONE">태그 없음</option>{labels.map(label => <option key={label.id} value={String(label.id)}>{label.name}</option>)}</select></div>
+          {focusView && (
+            <div className="design-filter-field design-node-direction-field">
+              <span>선택 노드 방향</span>
+              <select aria-label="선택 노드 송수신 방향" title="첫 번째 선택 노드를 기준으로 필터링합니다." value={nodeDirection} onChange={event => onNodeDirectionChange(event.target.value)}>
+                <option value={NODE_DIRECTION_ALL}>송신 + 수신</option>
+                <option value={NODE_DIRECTION_TX}>송신만</option>
+                <option value={NODE_DIRECTION_RX}>수신만</option>
+              </select>
+            </div>
+          )}
           <div className="design-display-options" aria-label="관계 표시 옵션">
             <label><input type="checkbox" checked={showProtocol} onChange={e => setShowProtocol(e.target.checked)} /><span>프로토콜</span></label>
             <label><input type="checkbox" checked={showMessageCount} onChange={e => setShowMessageCount(e.target.checked)} /><span>메시지 수</span></label>
