@@ -1101,6 +1101,12 @@ body.message-pane-resizing * { cursor: col-resize !important; }
 .design-filter-field { display: flex; align-items: center; gap: 6px; }
 .design-filter-field > span { color: #64748b; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .design-filter-field select { width: auto; min-width: 115px; padding: 6px 28px 6px 8px; border-radius: 7px; }
+/* Node-specific direction menu: allow toolbar controls to wrap in a narrow split view. */
+.node-centered-upper .design-toolbar { flex-wrap: wrap; row-gap: 6px; }
+.design-node-direction-field { padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.design-node-direction-field select { min-width: 116px; }
+:root[data-theme="dark"] .design-node-direction-field { border-color: #55565b; }
+
 .design-toolbar-summary { margin-left: auto; color: #64748b; font-size: 12px; white-space: nowrap; }
 .design-toolbar-summary strong { color: #1d4ed8; }
 
