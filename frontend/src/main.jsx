@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
@@ -24,6 +24,10 @@ import {
 } from 'lucide-react';
 import './style.css';
 import { nextNodePairSelection, isRelationBetweenNodes, isMessageInRelations } from './nodePair.js';
+import {
+  FIELD_COLUMN_KEYS, FIELD_COLUMN_HEADERS, FIELD_COLUMN_MIN_WIDTHS,
+  FIELD_COLUMN_STORAGE_KEY, normalizeFieldColumnWidths, resizeFieldColumn, fieldColumnTotalWidth,
+} from './fieldColumns.js';
 
 function resolveApiBase() {
   const configured = (import.meta.env.VITE_API_BASE_URL || '').trim();
@@ -3404,6 +3408,15 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
   const [fieldForm, setFieldForm] = useState(createEmptyFieldForm());
   const [draftFields, setDraftFields] = useState(() => fieldsToDraft(message.fields || []));
   const [draggingFieldKey, setDraggingFieldKey] = useState(null);
+  const [fieldColumnWidths, setFieldColumnWidths] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(FIELD_COLUMN_STORAGE_KEY);
+      return stored ? normalizeFieldColumnWidths(JSON.parse(stored)) : null;
+    } catch {
+      return null; // Private browsing or disabled storage: default layout still works.
+    }
+  });
+  const fieldResizeCleanup = useRef(null);
   const availableTypeMessages = useMemo(() => messages.filter(item => item.id !== message.id && !isEnumDefinition(item)), [messages, message.id]);
   const availableTypeEnums = useMemo(() => messages.filter(item => isEnumDefinition(item)), [messages]);
   const protocolSuggestions = useMemo(() => collectProtocolSuggestions(messages), [messages]);
@@ -3448,6 +3461,73 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
   }, [integrationTargets.map(item => item.id).join(',')]);
 
   useEffect(() => () => onDirtyChange?.(false), []);
+
+  useEffect(() => {
+    try {
+      if (fieldColumnWidths) {
+        window.localStorage.setItem(FIELD_COLUMN_STORAGE_KEY, JSON.stringify(fieldColumnWidths));
+      } else {
+        window.localStorage.removeItem(FIELD_COLUMN_STORAGE_KEY);
+      }
+    } catch {
+      // Resizing remains usable for this session even if storage is unavailable.
+    }
+  }, [fieldColumnWidths]);
+
+  useEffect(() => () => fieldResizeCleanup.current?.(), []);
+
+  // Capture the rendered (responsive) sizes when resizing begins, then switch
+  // to pixel widths so only the dragged column grows/shrinks and others stay put.
+  function visibleFieldColumnWidths(table) {
+    const cells = table?.tHead?.rows?.[0]?.cells;
+    if (!cells || cells.length !== FIELD_COLUMN_KEYS.length) return null;
+    return Object.fromEntries(FIELD_COLUMN_KEYS.map((key, index) => [
+      key,
+      Math.max(FIELD_COLUMN_MIN_WIDTHS[key], Math.round(cells[index].getBoundingClientRect().width)),
+    ]));
+  }
+
+  function beginFieldColumnResize(event, key) {
+    if (event.button !== 0 || !event.isPrimary) return;
+    const table = event.currentTarget.closest('table');
+    const initialWidths = visibleFieldColumnWidths(table);
+    if (!initialWidths) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    fieldResizeCleanup.current?.();
+    const startX = event.clientX;
+    const pointerId = event.pointerId;
+    document.body.classList.add('field-column-resizing');
+
+    const onMove = moveEvent => {
+      if (moveEvent.pointerId !== pointerId) return;
+      setFieldColumnWidths(resizeFieldColumn(initialWidths, key, moveEvent.clientX - startX));
+    };
+    const finish = () => {
+      document.body.classList.remove('field-column-resizing');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('blur', finish);
+      if (fieldResizeCleanup.current === finish) fieldResizeCleanup.current = null;
+    };
+    const onUp = upEvent => { if (upEvent.pointerId === pointerId) finish(); };
+    fieldResizeCleanup.current = finish;
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', finish);
+  }
+
+  function handleFieldColumnResizeKeyDown(event, key) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const initialWidths = visibleFieldColumnWidths(event.currentTarget.closest('table'));
+    if (!initialWidths) return;
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    setFieldColumnWidths(resizeFieldColumn(initialWidths, key, direction * (event.shiftKey ? 30 : 10)));
+  }
 
   function swapMessageTargets() {
     const currentTx = [...txTargetIds];
@@ -3559,29 +3639,47 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
                 <strong className="message-total-size-value">{totalMessageSize.toLocaleString('ko-KR')} <small>Byte</small></strong>
               </output>
             </div>
-            <p>필드 변경 후 반드시 변경사항 저장을 눌러야 반영됩니다. 마지막 행에서 새 필드를 바로 추가할 수 있습니다.</p>
+            <p>필드 변경 후 반드시 변경사항 저장을 눌러야 반영됩니다. 마지막 행에서 새 필드를 바로 추가할 수 있습니다. 열 제목 오른쪽 경계선을 드래그하면 너비를 조절할 수 있습니다.</p>
           </div>
           <div className="field-save-actions">
+            <button type="button" className="ghost" disabled={!fieldColumnWidths} onClick={() => setFieldColumnWidths(null)} title="모든 필드 열 너비를 기본 비율로 되돌립니다.">열 너비 초기화</button>
             {hasFieldChanges && <span className="dirty-indicator">저장되지 않은 변경사항 있음</span>}
             <button type="button" className="ghost" disabled={!hasFieldChanges} onClick={resetFieldChanges}>변경 취소</button>
             <button type="button" disabled={!hasFieldChanges} onClick={saveFieldChanges}><Save size={16}/> 변경사항 저장</button>
           </div>
         </div>
-        <div className="table-wrap">
+        <div className={fieldColumnWidths ? 'table-wrap field-columns-customized' : 'table-wrap'} style={fieldColumnWidths ? { '--field-table-width': `${fieldColumnTotalWidth(fieldColumnWidths)}px` } : undefined}>
           <table className="message-field-table">
             <colgroup>
-              <col className="field-col-order" />
-              <col className="field-col-type" />
-              <col className="field-col-name" />
-              <col className="field-col-purpose" />
-              <col className="field-col-array" />
-              <col className="field-col-size" />
-              <col className="field-col-range" />
-              <col className="field-col-unit" />
-              <col className="field-col-note" />
-              <col className="field-col-actions" />
+              <col className="field-col-order" style={fieldColumnWidths ? { width: `${fieldColumnWidths.order}px` } : undefined} />
+              <col className="field-col-type" style={fieldColumnWidths ? { width: `${fieldColumnWidths.type}px` } : undefined} />
+              <col className="field-col-name" style={fieldColumnWidths ? { width: `${fieldColumnWidths.name}px` } : undefined} />
+              <col className="field-col-purpose" style={fieldColumnWidths ? { width: `${fieldColumnWidths.purpose}px` } : undefined} />
+              <col className="field-col-array" style={fieldColumnWidths ? { width: `${fieldColumnWidths.array}px` } : undefined} />
+              <col className="field-col-size" style={fieldColumnWidths ? { width: `${fieldColumnWidths.size}px` } : undefined} />
+              <col className="field-col-range" style={fieldColumnWidths ? { width: `${fieldColumnWidths.range}px` } : undefined} />
+              <col className="field-col-unit" style={fieldColumnWidths ? { width: `${fieldColumnWidths.unit}px` } : undefined} />
+              <col className="field-col-note" style={fieldColumnWidths ? { width: `${fieldColumnWidths.note}px` } : undefined} />
+              <col className="field-col-actions" style={fieldColumnWidths ? { width: `${fieldColumnWidths.actions}px` } : undefined} />
             </colgroup>
-            <thead><tr><th>순서</th><th>자료형</th><th>필드 이름</th><th>필드 용도</th><th>배열</th><th>크기(Byte)</th><th>허용 값 범위</th><th>단위</th><th>비고</th><th>관리</th></tr></thead>
+            <thead><tr>{FIELD_COLUMN_KEYS.map(key => (
+              <th key={key}>
+                {FIELD_COLUMN_HEADERS[key]}
+                <span
+                  className="field-column-resizer"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`${FIELD_COLUMN_HEADERS[key]} 열 너비 조절`}
+                  aria-valuemin={FIELD_COLUMN_MIN_WIDTHS[key]}
+                  aria-valuemax={1200}
+                  aria-valuenow={fieldColumnWidths?.[key]}
+                  tabIndex={0}
+                  title="드래그 또는 방향키(←/→)로 열 너비 조절"
+                  onPointerDown={event => beginFieldColumnResize(event, key)}
+                  onKeyDown={event => handleFieldColumnResizeKeyDown(event, key)}
+                />
+              </th>
+            ))}</tr></thead>
             <tbody>{draftFields.map((field, index) => {
               const fieldKey = getFieldKey(field);
               return <tr key={fieldKey} className={draggingFieldKey === fieldKey ? 'dragging-row' : ''} onDragOver={(e) => { if (draggingFieldKey) e.preventDefault(); }} onDrop={() => reorderDraftField(fieldKey)}>
