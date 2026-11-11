@@ -330,7 +330,7 @@ td .array-size-label { margin: 0; }
    A scrollable minimum width preserves usable controls in the split editor. */
 .message-fields-card .message-field-table,
 .compact-message-editor .message-fields-card .message-field-table {
-  width: max(100%, var(--field-table-width, 0px));
+  width: var(--field-table-width, 100%);
   min-width: 1520px;
   table-layout: fixed;
 }
@@ -398,6 +398,11 @@ td .array-size-label { margin: 0; }
 .message-field-table .field-column-resizer:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: -2px;
+}
+.field-columns-customized .message-field-table,
+.compact-message-editor .message-fields-card .field-columns-customized .message-field-table {
+  /* Pixel widths remain accurate when the user narrows the table. */
+  min-width: 0;
 }
 .field-columns-customized .message-field-table .type-picker.compact {
   max-width: none;
