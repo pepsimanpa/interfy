@@ -330,7 +330,7 @@ td .array-size-label { margin: 0; }
    A scrollable minimum width preserves usable controls in the split editor. */
 .message-fields-card .message-field-table,
 .compact-message-editor .message-fields-card .message-field-table {
-  width: 100%;
+  width: max(100%, var(--field-table-width, 0px));
   min-width: 1520px;
   table-layout: fixed;
 }
@@ -369,6 +369,45 @@ td .array-size-label { margin: 0; }
 .message-field-table .order-cell { min-width: 0; gap: 3px; }
 .message-field-table .order-pill { min-width: 24px; height: 24px; }
 .message-field-table td:last-child button.icon { padding: 5px; }
+/* Resizable message field columns: no changes to Enum or other tables. */
+.message-field-table thead th { position: relative; padding-right: 15px; }
+.message-field-table .field-column-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 10px;
+  height: 100%;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.message-field-table .field-column-resizer::after {
+  content: '';
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  left: 4px;
+  width: 2px;
+  border-radius: 3px;
+  background: transparent;
+}
+.message-field-table th:hover .field-column-resizer::after,
+.message-field-table .field-column-resizer:focus-visible::after {
+  background: #3b82f6;
+}
+.message-field-table .field-column-resizer:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+.field-columns-customized .message-field-table .type-picker.compact {
+  max-width: none;
+}
+body.field-column-resizing,
+body.field-column-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
 
 /* Inline field add row */
 .field-add-row td { background: #fbfdff; border-top: 1px solid #dbeafe; }
