@@ -61,6 +61,13 @@ def apply_lightweight_migrations():
         _add_column_if_missing(conn, "message_fields", "note", "note TEXT")
         _add_column_if_missing(conn, "users", "is_deleted", "is_deleted BOOLEAN DEFAULT FALSE NOT NULL")
         _add_column_if_missing(conn, "users", "display_name", "display_name VARCHAR(255)")
+        # Preserve audit/backup attribution before a user account is permanently removed.
+        for table, column in (
+            ("message_change_histories", "changed_by_name"),
+            ("project_backups", "created_by_name"),
+            ("project_backup_events", "created_by_name"),
+        ):
+            _add_column_if_missing(conn, table, column, f"{column} VARCHAR(255)")
         _add_column_if_missing(conn, "project_backups", "kind", "kind VARCHAR(40) DEFAULT 'MANUAL' NOT NULL")
         _add_column_if_missing(conn, "project_backups", "source_backup_id", "source_backup_id INTEGER NULL REFERENCES project_backups(id)")
         _add_column_if_missing(conn, "project_backups", "message_count", "message_count INTEGER DEFAULT 0 NOT NULL")
@@ -69,6 +76,13 @@ def apply_lightweight_migrations():
         _add_column_if_missing(conn, "message_group_items", "order_index", "order_index INTEGER DEFAULT 0 NOT NULL")
 
         if dialect == "postgresql":
+            # Historical audit records must remain after deleting their user row.
+            for table, column in (
+                ("message_change_histories", "changed_by"),
+                ("project_backups", "created_by"),
+                ("project_backup_events", "created_by"),
+            ):
+                conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"))
             # value_range may contain multi-line ICD/range descriptions. Older
             # deployments used VARCHAR(255), which caused imports to fail at
             # commit time with StringDataRightTruncation.
