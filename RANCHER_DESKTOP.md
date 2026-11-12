@@ -111,3 +111,39 @@ docker compose -f docker-compose.yml -f compose.rancher.yml start backend fronte
   변경했는지 확인하세요. 런타임끼리 이미지·볼륨을 자동 공유하지 않습니다.
 
 공식 문서: https://docs.rancherdesktop.io/tutorials/working-with-containers/
+
+## 6. 이전 버전에서 삭제(비활성화) 처리된 계정 정리
+
+현재 Interfy는 사용자 계정 **삭제 시 실제 계정 행을 제거**합니다.
+삭제된 사번은 다시 회원가입할 수 있고, 프로젝트 소유권은 관리자에게
+이전되며 과거 작업/백업의 작성자 이름은 별도로 보존됩니다.
+별도의 계정 비활성화 및 재활성화 기능은 제공하지 않습니다.
+
+기존 버전이 `is_deleted` 상태로 남겨둔 사용자 계정은 데이터 보호를 위해
+업데이트만으로 삭제하지 않습니다. 아래 정리 절차를 **한 번** 수행하세요.
+
+1. 먼저 PostgreSQL 백업을 만들고, 호스트 PC에 사본을 보관합니다.
+
+   ```powershell
+   docker exec interfy-db pg_dump -U message_user -d message_manager -Fc -f /tmp/interfy-users-before-purge.dump
+   docker cp interfy-db:/tmp/interfy-users-before-purge.dump .\interfy-users-before-purge.dump
+   ```
+
+2. 최신 소스로 `rancher.cmd up moby`를 실행하여 DB 마이그레이션을 완료합니다.
+3. 정리 대상만 먼저 조회합니다 (DB 변경 없음).
+
+   ```powershell
+   docker exec interfy-backend python -m app.maintenance purge-deleted-users
+   ```
+
+4. 백업 및 대상 목록을 확인한 후, 일괄 정리를 실행합니다.
+
+   ```powershell
+   docker exec interfy-backend python -m app.maintenance purge-deleted-users --apply
+   ```
+
+5. 3번 명령을 다시 실행해 `0건`인지 확인하세요.
+
+주의: 이 명령은 **기존에 삭제 상태로 표시되던 계정만** 영구 삭제합니다.
+현재 활성 계정·프로젝트·메시지·변경 이력·백업은 지우지 않습니다.
+삭제된 사용자가 작성한 기록은 사용자 계정 참조 대신 표시용 작성자 이름을 보존합니다.
