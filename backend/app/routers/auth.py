@@ -1,48 +1,14 @@
-import os
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from ..database import get_db
-from ..models import User, UserRole, Project
+from ..models import User, UserRole
+from ..account_lifecycle import active_users_query, find_replacement_admin, permanently_delete_user
 from ..schemas import Token, UserCreate, UserRead, UserRoleUpdate
 from ..auth import hash_password, verify_password, create_access_token, get_current_user, require_admin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-def active_users_query(db: Session):
-    return db.query(User).filter(User.is_deleted.is_(False))
-
-
-def find_replacement_admin(db: Session, excluding_user_id: int | None = None) -> User | None:
-    query = active_users_query(db).filter(User.role == UserRole.ADMIN)
-    if excluding_user_id is not None:
-        query = query.filter(User.id != excluding_user_id)
-    return query.order_by(User.id.asc()).first()
-
-
-def deleted_user_email(user: User) -> str:
-    """Unique internal placeholder, freeing the original login id for reuse."""
-    return f"__deleted_user_{user.id}@interfy.invalid"
-
-
-def soft_delete_user(user: User, db: Session, replacement_admin: User | None = None):
-    """Deactivate an account while preserving audit attribution.
-
-    The user row is intentionally kept, and display_name preserves the original
-    login id so old change-history rows can still show who changed what.
-    """
-    replacement_id = replacement_admin.id if replacement_admin else user.id
-    db.query(Project).filter(Project.owner_id == user.id).update({Project.owner_id: replacement_id})
-    if not user.display_name:
-        user.display_name = user.email
-    # Keep the historical user row for audit links, but release the unique login id.
-    user.email = deleted_user_email(user)
-    user.is_deleted = True
-    user.password_hash = hash_password(os.urandom(16).hex())
-    user.role = UserRole.USER
 
 
 @router.post("/register", response_model=UserRead)
@@ -53,12 +19,12 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
 
     try:
         if existing:
-            # Backward compatibility: older soft-deleted accounts retained the
-            # login id. Release it without changing their audit user id/history.
-            if not existing.display_name:
-                existing.display_name = existing.email
-            existing.email = deleted_user_email(existing)
-            db.flush()  # UPDATE the old unique email before inserting the new user.
+            # A legacy soft-deleted row might still occupy the original login ID.
+            # Remove it fully while preserving its project and audit references.
+            replacement_admin = find_replacement_admin(db)
+            if replacement_admin is None:
+                raise HTTPException(status_code=409, detail="기존 삭제 계정을 정리할 관리자가 없습니다.")
+            permanently_delete_user(existing, db, replacement_admin)
 
         user = User(
             email=payload.email,
@@ -101,7 +67,9 @@ def withdraw_me(db: Session = Depends(get_db), current_user: User = Depends(get_
     if replacement_admin is None:
         replacement_admin = find_replacement_admin(db)
 
-    soft_delete_user(current_user, db, replacement_admin)
+    if replacement_admin is None:
+        raise HTTPException(status_code=400, detail="계정 삭제를 처리할 관리자 계정이 없습니다.")
+    permanently_delete_user(current_user, db, replacement_admin)
     db.commit()
     return {"ok": True}
 
@@ -116,7 +84,7 @@ def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User 
     if user.email == "admin":
         raise HTTPException(status_code=400, detail="기본 관리자 계정은 삭제할 수 없습니다.")
 
-    soft_delete_user(user, db, current_user)
+    permanently_delete_user(user, db, current_user)
     db.commit()
     return {"ok": True}
 
