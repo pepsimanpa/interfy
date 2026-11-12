@@ -324,6 +324,7 @@ def _build_database_backup(db: Session, project_id: int) -> dict:
                 "message_id": history.message_id,
                 "project_id": history.project_id,
                 "changed_by": history.changed_by,
+                "changed_by_name": history.changed_by_name or _user_name(history.user, history.changed_by),
                 "change_type": _enum_value(history.change_type),
                 "before_json": history.before_json,
                 "after_json": history.after_json,
@@ -427,7 +428,7 @@ def _backup_read(backup: ProjectBackup) -> dict:
         "id": backup.id,
         "project_id": backup.project_id,
         "created_by": backup.created_by,
-        "created_by_name": _user_name(backup.user, backup.created_by),
+        "created_by_name": backup.created_by_name or _user_name(backup.user, backup.created_by),
         "kind": getattr(backup, "kind", None) or "MANUAL",
         "source_backup_id": getattr(backup, "source_backup_id", None),
         "message_count": backup.message_count,
@@ -445,7 +446,7 @@ def _event_read(event: ProjectBackupEvent) -> dict:
         "backup_id": event.backup_id,
         "auto_backup_id": event.auto_backup_id,
         "created_by": event.created_by,
-        "created_by_name": _user_name(event.user, event.created_by),
+        "created_by_name": event.created_by_name or _user_name(event.user, event.created_by),
         "created_at": event.created_at,
     }
 
@@ -456,6 +457,7 @@ def _create_project_backup(db: Session, project_id: int, user: User, *, kind: st
     backup = ProjectBackup(
         project_id=project_id,
         created_by=user.id,
+        created_by_name=user.display_name or user.email,
         snapshot_json=payload,
         kind=kind,
         source_backup_id=source_backup_id,
@@ -471,6 +473,7 @@ def _create_project_backup(db: Session, project_id: int, user: User, *, kind: st
         backup_id=backup.id,
         auto_backup_id=None,
         created_by=user.id,
+        created_by_name=user.display_name or user.email,
     ))
     db.flush()
     return backup
@@ -736,11 +739,23 @@ def _restore_database_backup(db: Session, project: Project, backup_payload: dict
                 message_id = None
             if message_id not in restored_message_ids:
                 message_id = None
+        actor_id = row.get("changed_by")
+        try:
+            actor_id = int(actor_id) if actor_id is not None else None
+        except (TypeError, ValueError):
+            actor_id = None
+        user = db.get(User, actor_id) if actor_id is not None else None
+        actor_name = row.get("changed_by_name") or (
+            (user.display_name or user.email) if user is not None else (
+                f"탈퇴 사용자 #{actor_id}" if actor_id is not None else "탈퇴 사용자"
+            )
+        )
         db.add(MessageChangeHistory(
             id=int(row.get("id")),
             message_id=message_id,
             project_id=project.id,
-            changed_by=int(row.get("changed_by")),
+            changed_by=actor_id if user is not None else None,
+            changed_by_name=actor_name,
             change_type=change_type,
             before_json=row.get("before_json"),
             after_json=row.get("after_json"),
@@ -811,6 +826,7 @@ def restore_backup(backup_id: int, db: Session = Depends(get_db), current_user: 
         backup_id=backup.id,
         auto_backup_id=auto_backup.id,
         created_by=current_user.id,
+        created_by_name=current_user.display_name or current_user.email,
     ))
     db.commit()
     return {"ok": True, "auto_backup_id": auto_backup.id}
