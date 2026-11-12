@@ -166,6 +166,22 @@ tr.dragging-row { opacity: .55; background: #eff6ff; }
 .message-create input:nth-child(2), .message-edit label:nth-child(2) input { ime-mode: disabled; }
 .role-select { border: 1px solid #d9e2f1; border-radius: 999px; padding: 7px 12px; background: #fff; font-weight: 800; color: #0f172a; }
 .role-select:disabled { opacity: .6; cursor: not-allowed; }
+.account-status-label {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: #f1f5f9;
+  color: #334155;
+}
+.account-status-label.inactive { background: #fef3c7; color: #92400e; }
+.account-legacy-inactive-row td { background: rgba(148, 163, 184, .05); }
+:root[data-theme="dark"] .account-status-label { background: #334155; color: #e2e8f0; }
+:root[data-theme="dark"] .account-status-label.inactive { background: #493b22; color: #fcd34d; }
+:root[data-theme="dark"] .account-legacy-inactive-row td { background: rgba(148, 163, 184, .04); }
+
 .account-actions { margin-top: 18px; justify-content: flex-end; }
 
 /* History management tabs and backup controls */
