@@ -4869,6 +4869,13 @@ function AccountManagePage({ api, me, onBack }) {
   const [users, setUsers] = useState([]);
   const [notice, setNotice] = useState('');
 
+  function accountIdLabel(user) {
+    if (!user.is_deleted) return user.email;
+    if (user.display_name) return user.display_name;
+    // Older records may contain an internal placeholder instead of the login ID.
+    return /^\\d{5}$/.test(user.email) ? user.email : `기존 삭제 계정 #${user.id}`;
+  }
+
   async function loadUsers() {
     setNotice('');
     setUsers(await api.get('/auth/users'));
@@ -4877,7 +4884,7 @@ function AccountManagePage({ api, me, onBack }) {
   useEffect(() => { loadUsers(); }, []);
 
   async function updateUserRole(user, role) {
-    if (user.id === me?.id) return;
+    if (user.id === me?.id || user.is_deleted) return;
     setNotice('');
     try {
       await api.patch(`/auth/users/${user.id}/role`, { role });
@@ -4888,7 +4895,8 @@ function AccountManagePage({ api, me, onBack }) {
   }
 
   async function deleteUser(user) {
-    if (!confirm(`${user.email} 계정을 완전히 삭제할까요?\n\n프로젝트는 관리자에게 이전되고 변경 이력의 작성자 이름은 보존됩니다. 삭제 후 같은 사번으로 새로 가입할 수 있습니다.`)) return;
+    const label = accountIdLabel(user);
+    if (!confirm(`${label} ${user.is_deleted ? '기존 비활성화 계정을' : '계정을'} 완전히 삭제할까요?\n\n프로젝트는 관리자에게 이전되고 변경 이력의 작성자 이름은 보존됩니다. 삭제 후 같은 사번으로 새로 가입할 수 있습니다.`)) return;
     setNotice('');
     try {
       await api.del(`/auth/users/${user.id}`);
@@ -4905,7 +4913,7 @@ function AccountManagePage({ api, me, onBack }) {
           <div className="brand-mark"><UserCircle size={24} /></div>
           <div>
             <h1>계정 관리</h1>
-            <p className="eyebrow">가입된 계정을 확인하고 권한을 관리할 수 있습니다.</p>
+            <p className="eyebrow">활성 계정과 기존 비활성화 계정을 확인하고 관리할 수 있습니다.</p>
           </div>
         </div>
         <div className="user-box">
@@ -4917,19 +4925,20 @@ function AccountManagePage({ api, me, onBack }) {
       <main className="landing-main">
         <section className="card">
           <div className="card-title">
-            <div><h2>가입 계정 목록</h2><p>관리자는 타 계정 권한을 변경하거나 계정을 삭제할 수 있습니다.</p></div>
+            <div><h2>계정 목록</h2><p>기존 비활성화 계정은 로그인할 수 없으며 삭제 버튼으로 영구 삭제할 수 있습니다. 새 비활성화 기능은 제공하지 않습니다.</p></div>
             <button className="ghost" onClick={loadUsers}><RefreshCw size={16}/> 새로고침</button>
           </div>
           {notice && <div className="notice">{notice}</div>}
           <div className="table-wrap">
             <table>
-              <thead><tr><th>아이디</th><th>권한</th><th>생성일시</th><th></th></tr></thead>
+              <thead><tr><th>아이디</th><th>상태</th><th>권한</th><th>생성일시</th><th>관리</th></tr></thead>
               <tbody>
                 {users.map(user => (
-                  <tr key={user.id}>
-                    <td><strong>{user.email}</strong></td>
+                  <tr key={user.id} className={user.is_deleted ? 'account-legacy-inactive-row' : ''}>
+                    <td><strong>{accountIdLabel(user)}</strong></td>
+                    <td><span className={user.is_deleted ? 'account-status-label inactive' : 'account-status-label active'}>{user.is_deleted ? '기존 비활성화' : '활성'}</span></td>
                     <td>
-                      <select className="role-select" value={user.role} disabled={user.id === me?.id} onChange={e => updateUserRole(user, e.target.value)}>
+                      <select className="role-select" value={user.role} disabled={user.id === me?.id || user.is_deleted} title={user.is_deleted ? '기존 비활성화 계정의 권한은 수정할 수 없습니다.' : '계정 권한 변경'} onChange={e => updateUserRole(user, e.target.value)}>
                         <option value="USER">USER</option>
                         <option value="ADMIN">ADMIN</option>
                       </select>
@@ -4942,7 +4951,7 @@ function AccountManagePage({ api, me, onBack }) {
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 && <tr><td colSpan="4" className="muted">가입된 계정이 없습니다.</td></tr>}
+                {users.length === 0 && <tr><td colSpan="5" className="muted">가입된 계정이 없습니다.</td></tr>}
               </tbody>
             </table>
           </div>
