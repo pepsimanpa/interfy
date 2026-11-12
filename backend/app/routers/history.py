@@ -44,7 +44,7 @@ def list_history(project_id: int | None = None, db: Session = Depends(get_db), c
             "message_name": message_name,
             "project_id": h.project_id,
             "changed_by": h.changed_by,
-            "changed_by_name": (h.user.display_name or h.user.email) if h.user is not None else f"사용자 #{h.changed_by}",
+            "changed_by_name": h.changed_by_name or ((h.user.display_name or h.user.email) if h.user is not None else f"탈퇴 사용자 #{h.changed_by}" if h.changed_by is not None else "탈퇴 사용자"),
             "change_type": h.change_type,
             "before_json": h.before_json,
             "after_json": h.after_json,
