@@ -286,7 +286,8 @@ class MessageChangeHistory(Base):
     id = Column(Integer, primary_key=True, index=True)
     message_id = Column(Integer, ForeignKey("messages.id"), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    changed_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    changed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    changed_by_name = Column(String(255), nullable=True)  # Frozen attribution after account removal
     change_type = Column(SAEnum(ChangeType), nullable=False)
     before_json = Column(JSON, nullable=True)
     after_json = Column(JSON, nullable=True)
@@ -299,7 +300,8 @@ class ProjectBackup(Base):
     __tablename__ = "project_backups"
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_name = Column(String(255), nullable=True)
     snapshot_json = Column(JSON, nullable=False)
     kind = Column(String(40), default="MANUAL", nullable=False)
     source_backup_id = Column(Integer, ForeignKey("project_backups.id"), nullable=True)
@@ -318,7 +320,8 @@ class ProjectBackupEvent(Base):
     event_type = Column(String(40), nullable=False)
     backup_id = Column(Integer, ForeignKey("project_backups.id"), nullable=True)
     auto_backup_id = Column(Integer, ForeignKey("project_backups.id"), nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     project = relationship("Project")
