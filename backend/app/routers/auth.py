@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from ..database import get_db
@@ -17,15 +18,19 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     if existing and not existing.is_deleted:
         raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
 
-    try:
-        if existing:
-            # A legacy soft-deleted row might still occupy the original login ID.
-            # Remove it fully while preserving its project and audit references.
-            replacement_admin = find_replacement_admin(db)
-            if replacement_admin is None:
-                raise HTTPException(status_code=409, detail="기존 삭제 계정을 정리할 관리자가 없습니다.")
-            permanently_delete_user(existing, db, replacement_admin)
+    # Legacy soft-deleted users remain in the admin list until an admin
+    # explicitly removes them. Do not silently delete one during registration.
+    legacy_deleted = db.query(User).filter(
+        User.is_deleted.is_(True),
+        or_(User.email == payload.email, User.display_name == payload.email),
+    ).first()
+    if legacy_deleted:
+        raise HTTPException(
+            status_code=409,
+            detail="이전에 삭제 처리된 아이디입니다. 관리자 계정에서 해당 계정을 완전히 삭제한 후 가입해 주세요.",
+        )
 
+    try:
         user = User(
             email=payload.email,
             display_name=payload.email,
@@ -52,7 +57,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 @router.get("/users", response_model=list[UserRead])
 def list_users(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    return active_users_query(db).order_by(User.created_at.desc(), User.id.desc()).all()
+    # Show legacy inactive users too; only administrators can access this endpoint.
+    return db.query(User).order_by(User.is_deleted.asc(), User.created_at.desc(), User.id.desc()).all()
 
 
 @router.delete("/users/me")
@@ -76,7 +82,7 @@ def withdraw_me(db: Session = Depends(get_db), current_user: User = Depends(get_
 
 @router.delete("/users/{user_id}")
 def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    user = active_users_query(db).filter(User.id == user_id).first()
+    user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="계정을 찾을 수 없습니다.")
     if user.id == current_user.id:
