@@ -16,7 +16,7 @@ from app.models import (
     User, UserRole, ChangeType,
 )
 from app.account_lifecycle import permanently_delete_user, purge_legacy_deleted_users
-from app.routers.auth import delete_user, register, withdraw_me
+from app.routers.auth import delete_user, list_users, register, withdraw_me
 from app.schemas import UserCreate
 
 
@@ -96,11 +96,49 @@ class AccountDeletionTests(unittest.TestCase):
         self.assertEqual(new.role, UserRole.USER)
         self.assertTrue(verify_password("newpass", new.password_hash))
 
-    def test_legacy_deleted_account_can_reregister_and_old_row_is_purged(self):
+    def test_legacy_inactive_user_is_listed_and_can_be_manually_deleted(self):
         ids = self.make_user_with_history(email="23456", deleted=True)
+        users = list_users(db=self.db, current_user=self.admin)
+        self.assertEqual([u.email for u in users], ["admin", "23456"])
+        self.assertTrue(users[1].is_deleted)
+
+        with self.assertRaises(HTTPException) as error:
+            register(UserCreate(email="23456", password="password"), db=self.db)
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertIn("관리자", error.exception.detail)
+
+        result = delete_user(ids[0], db=self.db, current_user=self.admin)
+        self.assertEqual(result, {"ok": True})
+        self.assert_audit_saved(*ids, email="23456")
+
         new = register(UserCreate(email="23456", password="password"), db=self.db)
         self.assertNotEqual(new.id, ids[0])
-        self.assert_audit_saved(*ids, email="23456")
+        self.assertFalse(new.is_deleted)
+        self.assertEqual(
+            [u.email for u in list_users(db=self.db, current_user=self.admin)],
+            ["23456", "admin"],
+        )
+
+    def test_deleted_account_with_internal_placeholder_requires_manual_cleanup(self):
+        user = User(
+            email="__deleted_user_999@interfy.invalid",
+            display_name="24680",
+            password_hash="old-hash",
+            role=UserRole.USER,
+            is_deleted=True,
+        )
+        self.db.add(user)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as error:
+            register(UserCreate(email="24680", password="password"), db=self.db)
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertTrue(any(row.id == user.id and row.is_deleted for row in list_users(db=self.db, current_user=self.admin)))
+
+        delete_user(user.id, db=self.db, current_user=self.admin)
+        registered = register(UserCreate(email="24680", password="password"), db=self.db)
+        self.assertNotEqual(registered.id, user.id)
+
 
     def test_explicit_cleanup_removes_only_legacy_deleted_users(self):
         old = self.make_user_with_history(email="34567", deleted=True)
