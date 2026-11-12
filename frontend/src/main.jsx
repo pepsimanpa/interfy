@@ -4873,7 +4873,7 @@ function AccountManagePage({ api, me, onBack }) {
     if (!user.is_deleted) return user.email;
     if (user.display_name) return user.display_name;
     // Older records may contain an internal placeholder instead of the login ID.
-    return /^\\d{5}$/.test(user.email) ? user.email : `기존 삭제 계정 #${user.id}`;
+    return /^\d{5}$/.test(user.email) ? user.email : `기존 삭제 계정 #${user.id}`;
   }
 
   async function loadUsers() {
