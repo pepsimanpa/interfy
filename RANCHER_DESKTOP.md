@@ -114,36 +114,27 @@ docker compose -f docker-compose.yml -f compose.rancher.yml start backend fronte
 
 ## 6. 이전 버전에서 삭제(비활성화) 처리된 계정 정리
 
-현재 Interfy는 사용자 계정 **삭제 시 실제 계정 행을 제거**합니다.
-삭제된 사번은 다시 회원가입할 수 있고, 프로젝트 소유권은 관리자에게
-이전되며 과거 작업/백업의 작성자 이름은 별도로 보존됩니다.
-별도의 계정 비활성화 및 재활성화 기능은 제공하지 않습니다.
+현재 Interfy에서 **계정 삭제**를 실행하면 실제 계정 행이 제거됩니다.
+프로젝트는 관리자에게 이전되고, 기존 변경 이력·백업의 작성자 이름은 유지됩니다.
+새로운 계정 비활성화·재활성화 기능은 제공하지 않습니다.
 
-기존 버전이 `is_deleted` 상태로 남겨둔 사용자 계정은 데이터 보호를 위해
-업데이트만으로 삭제하지 않습니다. 아래 정리 절차를 **한 번** 수행하세요.
+기존 버전의 `is_deleted` 계정은 **관리자 계정 목록에 그대로 표시**합니다.
+업데이트했다고 계정을 자동으로 삭제하지 않습니다.
 
-1. 먼저 PostgreSQL 백업을 만들고, 호스트 PC에 사본을 보관합니다.
+1. 최신 소스를 내려받고 `rancher.cmd up moby`로 백엔드를 업데이트합니다.
+2. `admin` 계정으로 로그인하고 **계정 관리 → 계정 목록**으로 이동합니다.
+3. 목록의 `상태` 열에서 **기존 비활성화** 계정을 확인합니다.
+4. 정리가 필요한 계정 행의 휴지통 아이콘을 클릭하고 삭제를 확인합니다.
+5. 계정이 목록에서 사라지면, 같은 사번으로 새로 가입할 수 있습니다.
 
-   ```powershell
-   docker exec interfy-db pg_dump -U message_user -d message_manager -Fc -f /tmp/interfy-users-before-purge.dump
-   docker cp interfy-db:/tmp/interfy-users-before-purge.dump .\interfy-users-before-purge.dump
-   ```
+기존 비활성화 계정은 로그인하거나 권한을 수정할 수 없습니다.
+반드시 **관리자에 의한 완전 삭제** 후 동일한 사번으로 다시 가입할 수 있습니다.
+대량 삭제 대신 계정별로 확인하고 정리하는 것을 권장합니다.
 
-2. 최신 소스로 `rancher.cmd up moby`를 실행하여 DB 마이그레이션을 완료합니다.
-3. 정리 대상만 먼저 조회합니다 (DB 변경 없음).
+프로젝트·변경 이력을 유지하더라도 사용자 계정 제거는 되돌릴 수 없으니,
+중요한 운영 DB는 삭제 전에 별도로 백업하세요.
 
-   ```powershell
-   docker exec interfy-backend python -m app.maintenance purge-deleted-users
-   ```
-
-4. 백업 및 대상 목록을 확인한 후, 일괄 정리를 실행합니다.
-
-   ```powershell
-   docker exec interfy-backend python -m app.maintenance purge-deleted-users --apply
-   ```
-
-5. 3번 명령을 다시 실행해 `0건`인지 확인하세요.
-
-주의: 이 명령은 **기존에 삭제 상태로 표시되던 계정만** 영구 삭제합니다.
-현재 활성 계정·프로젝트·메시지·변경 이력·백업은 지우지 않습니다.
-삭제된 사용자가 작성한 기록은 사용자 계정 참조 대신 표시용 작성자 이름을 보존합니다.
+```powershell
+docker exec interfy-db pg_dump -U message_user -d message_manager -Fc -f /tmp/interfy-accounts-before-delete.dump
+docker cp interfy-db:/tmp/interfy-accounts-before-delete.dump .\\interfy-accounts-before-delete.dump
+```
