@@ -369,6 +369,29 @@ td .array-size-label { margin: 0; }
 .message-field-table .order-cell { min-width: 0; gap: 3px; }
 .message-field-table .order-pill { min-width: 24px; height: 24px; }
 .message-field-table td:last-child button.icon { padding: 5px; }
+/* Field range / note: collapse to one line when idle, expand during editing. */
+.message-field-table td textarea.expandable-field-textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 7px;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 18px;
+  resize: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.message-field-table td textarea.expandable-field-textarea:focus {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
 /* Resizable message field columns: no changes to Enum or other tables. */
 .message-field-table thead th { position: relative; padding-right: 15px; }
 .message-field-table .field-column-resizer {
