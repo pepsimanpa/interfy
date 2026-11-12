@@ -20,7 +20,7 @@ test('legacy-inactive users have a working delete action but no role editing', (
   assert.match(panel, /disabled=\{user\.id === me\?\.id \|\| user\.is_deleted\}/);
   assert.match(panel, /api\.del\(\`\/auth\/users\/\$\{user\.id\}\`\)/);
   assert.match(panel, /onClick=\{\(\) => deleteUser\(user\)\}/);
-  assert.match(panel, /계정을 완전히 삭제/);
+  assert.match(panel, /완전히 삭제할까요/);
   assert.doesNotMatch(panel, /비활성화 버튼|onClick=.*deactivate/);
 });
 
