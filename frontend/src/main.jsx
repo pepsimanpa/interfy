@@ -4888,7 +4888,7 @@ function AccountManagePage({ api, me, onBack }) {
   }
 
   async function deleteUser(user) {
-    if (!confirm(`${user.email} 계정을 삭제할까요?`)) return;
+    if (!confirm(`${user.email} 계정을 완전히 삭제할까요?\n\n프로젝트는 관리자에게 이전되고 변경 이력의 작성자 이름은 보존됩니다. 삭제 후 같은 사번으로 새로 가입할 수 있습니다.`)) return;
     setNotice('');
     try {
       await api.del(`/auth/users/${user.id}`);
@@ -4956,7 +4956,7 @@ function AccountPanel({ api, me, onLogout }) {
   const [notice, setNotice] = useState('');
 
   async function withdraw() {
-    if (!confirm('회원탈퇴를 진행할까요? 탈퇴 후에는 현재 계정으로 다시 로그인할 수 없습니다.')) return;
+    if (!confirm('계정을 완전히 삭제할까요? 프로젝트는 관리자에게 이전되고 변경 이력은 보존됩니다. 나중에 같은 사번으로 재가입할 수 있습니다.')) return;
     setNotice('');
     try {
       await api.del('/auth/users/me');
