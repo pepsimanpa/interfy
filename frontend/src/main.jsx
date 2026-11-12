@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
@@ -2179,7 +2179,7 @@ function MessageCrudPanel({ api, project, messages, setMessages, messageForm, se
 function updateOverflowInputTitle(element, value, fallbackTitle = '') {
   if (!element) return;
   const text = String(value ?? '');
-  const isOverflowing = Boolean(text) && element.scrollWidth > element.clientWidth + 1;
+  const isOverflowing = Boolean(text) && (text.includes('\n') || element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1);
   element.title = isOverflowing ? text : fallbackTitle;
 }
 
@@ -2189,6 +2189,44 @@ function overflowInputHandlers(value, fallbackTitle = '') {
     onMouseMove: (event) => updateOverflowInputTitle(event.currentTarget, value, fallbackTitle),
     onMouseLeave: (event) => { event.currentTarget.title = fallbackTitle; },
   };
+}
+
+// Single-line when idle; grows to fit multiline text only while editing.
+// Native hover title continues to display the entire value when collapsed/truncated.
+function ExpandableFieldTextarea({ value = '', onChange, placeholder = '', ariaLabel = '' }) {
+  const [focused, setFocused] = useState(false);
+  const ref = useRef(null);
+  const text = String(value ?? '');
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    if (!focused) {
+      element.style.height = '';
+      element.style.overflowY = 'hidden';
+      return;
+    }
+    element.style.height = 'auto';
+    const nextHeight = Math.max(34, Math.min(element.scrollHeight, 320));
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > 320 ? 'auto' : 'hidden';
+  }, [focused, text]);
+
+  return (
+    <textarea
+      ref={ref}
+      className="expandable-field-textarea"
+      rows={1}
+      value={text}
+      placeholder={placeholder}
+      aria-label={ariaLabel || placeholder}
+      aria-expanded={focused}
+      onChange={event => onChange?.(event.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      {...overflowInputHandlers(text)}
+    />
+  );
 }
 
 function SuggestionInput({ value = '', onChange, fixedSuggestions = [], suggestions = [], placeholder = '', ariaLabel = '', title = '', required = false, className = '', fixedTitle = '고정값', suggestionTitle = '기존 입력값' }) {
@@ -3716,9 +3754,9 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
                 <td><input value={field.purpose || ''} {...overflowInputHandlers(field.purpose || '')} onChange={e => updateDraftField(fieldKey, { purpose: e.target.value })} /></td>
                 <td><ArraySizeControl value={field} onChange={next => updateDraftField(fieldKey, next)} compact /></td>
                 <td>{fieldSizeBytes(field, messages)}</td>
-                <td><input value={field.value_range || ''} {...overflowInputHandlers(field.value_range || '')} onChange={e => updateDraftField(fieldKey, { value_range: e.target.value })} /></td>
+                <td><ExpandableFieldTextarea ariaLabel="허용 값 범위" value={field.value_range || ''} onChange={value_range => updateDraftField(fieldKey, { value_range })} /></td>
                 <td><UnitInput value={field.unit || ''} suggestions={unitSuggestions} onChange={unit => updateDraftField(fieldKey, { unit })} /></td>
-                <td><input value={field.note || ''} {...overflowInputHandlers(field.note || '')} onChange={e => updateDraftField(fieldKey, { note: e.target.value })} /></td>
+                <td><ExpandableFieldTextarea ariaLabel="비고" value={field.note || ''} onChange={note => updateDraftField(fieldKey, { note })} /></td>
                 <td><button type="button" className="icon danger-icon" onClick={() => deleteDraftField(fieldKey)}><Trash2 size={15}/></button></td>
               </tr>;
             })}
@@ -3730,9 +3768,9 @@ function MessageFieldPanel({ api, project, message, messages = [], labels = [], 
                 <td><input placeholder="필드 용도" value={fieldForm.purpose || ''} {...overflowInputHandlers(fieldForm.purpose || '')} onChange={e => setFieldForm({ ...fieldForm, purpose: e.target.value })} /></td>
                 <td><ArraySizeControl value={fieldForm} onChange={next => setFieldForm(normalizeFieldDraft(next))} compact /></td>
                 <td>{fieldSizeBytes(fieldForm, messages)}</td>
-                <td><input placeholder="허용 값 범위" value={fieldForm.value_range || ''} {...overflowInputHandlers(fieldForm.value_range || '')} onChange={e => setFieldForm({ ...fieldForm, value_range: e.target.value })} /></td>
+                <td><ExpandableFieldTextarea placeholder="허용 값 범위" value={fieldForm.value_range || ''} onChange={value_range => setFieldForm({ ...fieldForm, value_range })} /></td>
                 <td><UnitInput placeholder="단위" value={fieldForm.unit || ''} suggestions={unitSuggestions} onChange={unit => setFieldForm({ ...fieldForm, unit })} /></td>
-                <td><input placeholder="비고" value={fieldForm.note || ''} {...overflowInputHandlers(fieldForm.note || '')} onChange={e => setFieldForm({ ...fieldForm, note: e.target.value })} /></td>
+                <td><ExpandableFieldTextarea placeholder="비고" value={fieldForm.note || ''} onChange={note => setFieldForm({ ...fieldForm, note })} /></td>
                 <td><button type="button" onClick={addFieldToDraft} disabled={!fieldForm.name}><Plus size={15}/> 추가</button></td>
               </tr></tbody>
           </table>
