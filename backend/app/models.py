@@ -56,6 +56,7 @@ class ChangeType(str, Enum):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {"sqlite_autoincrement": True}  # User IDs must not be reused after deletion.
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     display_name = Column(String(255), nullable=True)
