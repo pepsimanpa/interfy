@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from ..database import get_db
 from ..models import User, UserRole, Project
 from ..schemas import Token, UserCreate, UserRead, UserRoleUpdate
@@ -22,6 +23,11 @@ def find_replacement_admin(db: Session, excluding_user_id: int | None = None) ->
     return query.order_by(User.id.asc()).first()
 
 
+def deleted_user_email(user: User) -> str:
+    """Unique internal placeholder, freeing the original login id for reuse."""
+    return f"__deleted_user_{user.id}@interfy.invalid"
+
+
 def soft_delete_user(user: User, db: Session, replacement_admin: User | None = None):
     """Deactivate an account while preserving audit attribution.
 
@@ -32,6 +38,8 @@ def soft_delete_user(user: User, db: Session, replacement_admin: User | None = N
     db.query(Project).filter(Project.owner_id == user.id).update({Project.owner_id: replacement_id})
     if not user.display_name:
         user.display_name = user.email
+    # Keep the historical user row for audit links, but release the unique login id.
+    user.email = deleted_user_email(user)
     user.is_deleted = True
     user.password_hash = hash_password(os.urandom(16).hex())
     user.role = UserRole.USER
@@ -39,11 +47,31 @@ def soft_delete_user(user: User, db: Session, replacement_admin: User | None = N
 
 @router.post("/register", response_model=UserRead)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == payload.email).first():
+    existing = db.query(User).filter(User.email == payload.email).first()
+    if existing and not existing.is_deleted:
         raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
-    user = User(email=payload.email, display_name=payload.email, password_hash=hash_password(payload.password), role=UserRole.USER)
-    db.add(user)
-    db.commit()
+
+    try:
+        if existing:
+            # Backward compatibility: older soft-deleted accounts retained the
+            # login id. Release it without changing their audit user id/history.
+            if not existing.display_name:
+                existing.display_name = existing.email
+            existing.email = deleted_user_email(existing)
+            db.flush()  # UPDATE the old unique email before inserting the new user.
+
+        user = User(
+            email=payload.email,
+            display_name=payload.email,
+            password_hash=hash_password(payload.password),
+            role=UserRole.USER,
+        )
+        db.add(user)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.") from exc
+
     db.refresh(user)
     return user
 
