@@ -47,6 +47,7 @@ class UserRead(BaseModel):
     email: str
     display_name: Optional[str] = None
     role: UserRole
+    is_deleted: bool = False  # Legacy deactivated accounts, visible to admins for manual removal.
     created_at: datetime
     model_config = {"from_attributes": True}
 
