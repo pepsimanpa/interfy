@@ -554,7 +554,7 @@ class HistoryRead(BaseModel):
     message_id: Optional[int]
     message_name: Optional[str] = None
     project_id: int
-    changed_by: int
+    changed_by: Optional[int]
     changed_by_name: Optional[str] = None
     change_type: ChangeType
     before_json: Optional[Any]
@@ -576,7 +576,7 @@ class BackupCreate(BaseModel):
 class BackupRead(BaseModel):
     id: int
     project_id: int
-    created_by: int
+    created_by: Optional[int]
     created_by_name: Optional[str] = None
     kind: str = "MANUAL"
     source_backup_id: Optional[int] = None
@@ -592,7 +592,7 @@ class BackupEventRead(BaseModel):
     event_type: str
     backup_id: Optional[int] = None
     auto_backup_id: Optional[int] = None
-    created_by: int
+    created_by: Optional[int]
     created_by_name: Optional[str] = None
     created_at: datetime
     model_config = {"from_attributes": True}
