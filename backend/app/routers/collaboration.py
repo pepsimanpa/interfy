@@ -1,8 +1,8 @@
 """Export a scoped, editable partner package based on Interfy's native JSON schema.
 
 Only selected nodes' related messages and transitive STRUCT/ENUM references are
-included; external nodes mentioned in those messages remain in the node list
-so the standalone editor can preserve complete TX/RX relationships.
+included. The optional restricted export hides unrelated TX/RX node names and
+node records without modifying the underlying project.
 """
 from __future__ import annotations
 
@@ -30,10 +30,11 @@ router = APIRouter(tags=["collaboration"])
 class PartnerExportRequest(BaseModel):
     target_ids: list[int] = Field(min_length=1)
     direction: str = "all"  # "tx", "rx" or "all"; old clients default to both
+    restrict_relations: bool = False  # Opt-in: expose only selected nodes in TX/RX lists.
 
 
 
-def build_partner_package(project_data: dict[str, Any], selected_names: list[str], node_ids: dict[str, int] | None = None, project_id: int | None = None, message_ids: dict[str, int] | None = None, direction: str = "all") -> dict[str, Any]:
+def build_partner_package(project_data: dict[str, Any], selected_names: list[str], node_ids: dict[str, int] | None = None, project_id: int | None = None, message_ids: dict[str, int] | None = None, direction: str = "all", restrict_relations: bool = False) -> dict[str, Any]:
     """Pure subset builder, also useful from regression tests."""
     direction = (direction or "all").strip().lower()
     if direction not in {"tx", "rx", "all"}:
@@ -68,6 +69,15 @@ def build_partner_package(project_data: dict[str, Any], selected_names: list[str
         {**row, **({"interfy_id": message_ids[row["struct_name"].lower()]} if message_ids and row["struct_name"].lower() in message_ids else {})}
         for row in messages if row["struct_name"].lower() in included
     ]
+    if restrict_relations:
+        # Filter both roles, including dependency messages, before base snapshots
+        # are generated. Hidden targets must not appear in the JSON at all.
+        for row in package["messages"]:
+            for role in ("tx_targets", "rx_targets"):
+                row[role] = [
+                    name for name in row.get(role, [])
+                    if str(name).lower() in selected
+                ]
     available_names = {row["struct_name"].lower() for row in package["messages"]}
     package["groups"] = [
         {**group, "messages": [name for name in group.get("messages", []) if str(name).lower() in available_names]}
@@ -80,8 +90,9 @@ def build_partner_package(project_data: dict[str, Any], selected_names: list[str
         if any(str(name).lower() in available_names for name in label.get("messages", []))
     ]
     related_nodes = selected.copy()
-    for row in package["messages"]:
-        related_nodes.update(str(name).lower() for name in row.get("tx_targets", []) + row.get("rx_targets", []))
+    if not restrict_relations:
+        for row in package["messages"]:
+            related_nodes.update(str(name).lower() for name in row.get("tx_targets", []) + row.get("rx_targets", []))
     package["integration_targets"] = [
         {**node, **({"interfy_id": node_ids[node["name"].lower()]} if node_ids and node["name"].lower() in node_ids else {})}
         for node in project_data.get("integration_targets", [])
@@ -90,6 +101,7 @@ def build_partner_package(project_data: dict[str, Any], selected_names: list[str
     package["collaboration"] = {
         "project_id": project_id,
         "format": "interfy-partner-v1",
+        "restrict_relations": bool(restrict_relations),
         "exported_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         "selected_targets": [
             node["name"] for node in package["integration_targets"]
@@ -125,7 +137,10 @@ def export_partner_package(
     node_ids = {node.name.lower(): node.id for node in all_nodes}
     all_messages = db.query(Message).filter(Message.project_id == project_id).all()
     message_ids = {(message.struct_name or message.name).lower(): message.id for message in all_messages}
-    content = build_partner_package(project_data, [target.name for target in targets], node_ids, project_id, message_ids, direction=payload.direction)
+    content = build_partner_package(
+        project_data, [target.name for target in targets], node_ids, project_id,
+        message_ids, direction=payload.direction, restrict_relations=payload.restrict_relations,
+    )
     base = _safe_filename_part(project.acronym or project.name or "interfy")
     return _json_response(content, f"{base}-partner-package.json")
 
