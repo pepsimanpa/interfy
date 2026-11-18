@@ -1,10 +1,11 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
 from urllib.parse import quote
 from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
-from ..models import Project, Message, MessageField, MessageGroup, MessageLabel, IntegrationTarget, User
+from ..models import Project, Message, MessageField, MessageGroup, MessageLabel, IntegrationTarget, MessageTxTargetItem, MessageRxTargetItem, User
 from ..auth import get_current_user
 from ..services.exporters import render_header, render_idl, render_csharp, to_macro_name
 from ..services.idd_docx import render_idd_docx
@@ -70,6 +71,72 @@ def label_messages(db: Session, label_id: int) -> tuple[Project, MessageLabel, l
     project = db.get(Project, label.project_id)
     base_ids = [item.message_id for item in (label.items or [])]
     return project, label, messages_with_dependencies(db, project.id, base_ids)
+
+
+class SelectedNodeExportRequest(BaseModel):
+    target_ids: list[int] = Field(min_length=1)
+    direction: str = "all"
+
+
+def selected_node_messages(
+    db: Session, project_id: int, target_ids: list[int], direction: str = "all"
+) -> tuple[Project, list[Message]]:
+    """Union messages attached to selected nodes, then follow type dependencies."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    direction = str(direction or "all").strip().lower()
+    if direction not in {"tx", "rx", "all"}:
+        raise HTTPException(status_code=422, detail="송수신 기준은 tx, rx, all 중 하나여야 합니다.")
+    ids = set(target_ids)
+    if not ids:
+        raise HTTPException(status_code=422, detail="최소 한 개 이상의 노드를 선택하세요.")
+    matched = db.query(IntegrationTarget.id).filter(
+        IntegrationTarget.project_id == project_id, IntegrationTarget.id.in_(ids)
+    ).count()
+    if matched != len(ids):
+        raise HTTPException(status_code=422, detail="다른 프로젝트 또는 존재하지 않는 노드가 포함되어 있습니다.")
+    selected_message_ids: set[int] = set()
+    if direction in {"tx", "all"}:
+        selected_message_ids.update(
+            row[0] for row in db.query(MessageTxTargetItem.message_id).filter(
+                MessageTxTargetItem.target_id.in_(ids)
+            ).all()
+        )
+    if direction in {"rx", "all"}:
+        selected_message_ids.update(
+            row[0] for row in db.query(MessageRxTargetItem.message_id).filter(
+                MessageRxTargetItem.target_id.in_(ids)
+            ).all()
+        )
+    definitions = messages_with_dependencies(db, project_id, list(selected_message_ids))
+    return project, sorted(definitions, key=lambda item: (item.order_index or 0, item.id or 0))
+
+
+@router.post("/projects/{project_id}/export/nodes/{output_format}")
+def export_selected_nodes(
+    project_id: int, output_format: str, payload: SelectedNodeExportRequest,
+    timezone: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Generate one nonduplicated code file for any selected nodes/direction."""
+    renderers = {
+        "header": (render_header, "h", "text/x-c"),
+        "idl": (render_idl, "idl", "text/plain"),
+        "csharp": (render_csharp, "cs", "text/x-csharp"),
+    }
+    if output_format not in renderers:
+        raise HTTPException(status_code=422, detail="지원되지 않는 출력 형식입니다.")
+    project, messages = selected_node_messages(db, project_id, payload.target_ids, payload.direction)
+    render, extension, media_type = renderers[output_format]
+    acronym = project.acronym or to_macro_name(project.name)
+    suffix = str(payload.direction or "all").strip().upper()
+    filename = f"{safe_filename_part(acronym)}_NODES_{len(set(payload.target_ids))}_{suffix}.{extension}"
+    return file_response(
+        render(project.name, messages, acronym, timezone_name=timezone),
+        filename, media_type,
+    )
 
 
 def integration_target_messages(db: Session, target_id: int, direction: str | None = "all") -> tuple[Project, IntegrationTarget, list[Message]]:

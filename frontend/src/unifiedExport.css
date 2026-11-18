@@ -1,0 +1,77 @@
+/* Output screen: one scope selector and shared format selector, IDD separate. */
+.unified-export-page { min-width: 0; display: grid; gap: 18px; align-content: start; padding: 24px; }
+.unified-export-heading { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+.unified-export-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.unified-export-tool { display: inline-flex; gap: 7px; align-items: center; padding: 7px 10px; text-decoration: none; border-radius: 9px; border: 1px solid #d7dfef; background: #fff; color: #334155; font-size: 12px; font-weight: 650; min-height: 33px; }
+button.unified-export-tool { background: #fff; color: #334155; font-size: 12px; }
+.unified-export-tool:hover { background: #eff6ff; color: #1d4ed8; }
+.unified-export-card { display: grid; gap: 20px; }
+.unified-export-section-head { display: flex; align-items: flex-start; gap: 10px; }
+.unified-export-section-head > svg { color: #2563eb; margin-top: 3px; flex: 0 0 auto; }
+.unified-export-section-head h3 { font-size: 17px; margin: 0; }
+.unified-export-section-head p { margin: 4px 0 0; font-size: 13px; color: #64748b; }
+.unified-export-scope, .unified-export-formats, .unified-export-condition { margin: 0; padding: 0; border: 0; min-width: 0; }
+.unified-export-scope legend, .unified-export-formats legend, .unified-export-condition legend { font-size: 13px; font-weight: 800; margin: 0 0 10px; padding: 0; color: #334155; }
+.unified-export-scope-options { display: flex; gap: 10px; flex-wrap: wrap; }
+.unified-export-scope-choice { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid #d7dfef; border-radius: 10px; background: #fff; color: #334155; padding: 10px 14px; min-width: 145px; font-weight: 650; }
+.unified-export-scope-choice input { margin: 0; width: auto; accent-color: #2563eb; }
+.unified-export-scope-choice.selected { border-color: #60a5fa; background: #eff6ff; color: #1d4ed8; }
+.unified-export-conditions { display: grid; grid-template-columns: minmax(185px, .7fr) minmax(300px, 1.3fr); gap: 14px; align-items: stretch; }
+.unified-export-condition { padding: 16px; border: 1px solid #d7dfef; border-radius: 12px; background: #fff; min-height: 190px; }
+.unified-export-condition legend { float: left; width: 100%; margin-bottom: 12px; }
+.unified-export-condition legend + * { clear: both; }
+.unified-export-condition[disabled] { background: #f8fafc; border-color: #e2e8f0; opacity: .52; }
+.unified-export-condition[disabled] * { cursor: not-allowed; }
+.unified-export-condition select { width: min(280px, 100%); max-width: 100%; }
+.unified-export-condition p { font-size: 12px; color: #64748b; margin: 10px 0 0; }
+.unified-export-node-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 9px; font-size: 12px; color: #64748b; }
+.unified-export-node-toolbar > div { display: flex; gap: 6px; }
+.unified-export-node-toolbar button { padding: 5px 8px; font-size: 11px; min-height: 26px; }
+.unified-export-node-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 164px; overflow: auto; padding: 4px 2px 10px 0; }
+.unified-export-node-list label, .unified-export-direction label { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: #334155; cursor: pointer; }
+.unified-export-node-list label span { min-width: 0; overflow-wrap: anywhere; }
+.unified-export-node-list input, .unified-export-direction input { flex: 0 0 auto; margin: 0; width: auto; accent-color: #2563eb; }
+.unified-export-direction { padding-top: 12px; border-top: 1px solid #e2e8f0; margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 9px 16px; font-size: 12px; }
+.unified-export-direction > span { font-weight: 750; color: #475569; }
+.unified-export-direction > div { display: flex; flex-wrap: wrap; gap: 9px 16px; }
+.unified-export-format-options { display: flex; gap: 9px; flex-wrap: wrap; }
+button.unified-export-format { display: inline-flex; min-width: 96px; justify-content: center; background: #f8fafc; border: 1px solid #d7dfef; color: #475569; padding: 9px 14px; }
+button.unified-export-format.selected { background: #eff6ff; color: #1d4ed8; border-color: #60a5fa; }
+.unified-export-bottom { border-top: 1px solid #e2e8f0; padding-top: 18px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.unified-export-summary { display: grid; gap: 3px; min-width: 0; }
+.unified-export-summary strong { font-size: 13px; }
+.unified-export-summary span { color: #475569; font-size: 13px; }
+.unified-export-summary small { color: #64748b; font-size: 11px; }
+button.unified-export-download { padding: 10px 17px; min-height: 40px; }
+.unified-export-notice { background: #f8fafc; padding: 10px 13px; border-radius: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.unified-export-idd { display: grid; gap: 13px; }
+.unified-export-idd-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.unified-export-idd-actions button { min-height: 37px; }
+.unified-export-idd-help { font-size: 12px; color: #64748b; }
+:root[data-theme="dark"] .unified-export-tool,
+:root[data-theme="dark"] button.unified-export-tool,
+:root[data-theme="dark"] .unified-export-scope-choice,
+:root[data-theme="dark"] .unified-export-condition { background: #252526; color: #ddd; border-color: #3e3e42; }
+:root[data-theme="dark"] .unified-export-scope-choice.selected,
+:root[data-theme="dark"] button.unified-export-format.selected { background: #123653; color: #93c5fd; border-color: #285f8c; }
+:root[data-theme="dark"] .unified-export-condition[disabled] { background: #202024; opacity: .52; }
+:root[data-theme="dark"] .unified-export-scope legend,
+:root[data-theme="dark"] .unified-export-formats legend,
+:root[data-theme="dark"] .unified-export-condition legend,
+:root[data-theme="dark"] .unified-export-node-list label,
+:root[data-theme="dark"] .unified-export-direction label { color: #ccc; }
+:root[data-theme="dark"] button.unified-export-format { background: #252526; color: #ccc; border-color: #3e3e42; }
+:root[data-theme="dark"] .unified-export-summary span { color: #bbb; }
+:root[data-theme="dark"] .unified-export-notice { background: #222326; }
+@media (max-width: 980px) {
+  .unified-export-page { padding: 16px; }
+  .unified-export-conditions { grid-template-columns: minmax(0, 1fr); }
+  .unified-export-condition { min-height: 110px; }
+}
+@media (max-width: 560px) {
+  .unified-export-page { padding: 12px; gap: 12px; }
+  .unified-export-card { gap: 14px; }
+  .unified-export-scope-choice { min-width: 0; flex: 1 1 130px; }
+  .unified-export-node-list { grid-template-columns: 1fr; }
+  button.unified-export-download { width: 100%; }
+}

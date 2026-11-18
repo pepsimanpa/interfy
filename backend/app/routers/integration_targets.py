@@ -6,6 +6,7 @@ from ..models import (
     Project,
     Message,
     IntegrationTarget,
+    SystemIpAssignment,
     MessageTxTargetItem,
     MessageRxTargetItem,
     User,
@@ -91,6 +92,8 @@ def delete_integration_target(target_id: int, db: Session = Depends(get_db), cur
     target = db.get(IntegrationTarget, target_id)
     if not target:
         raise HTTPException(status_code=404, detail="Integration target not found")
+    if db.query(SystemIpAssignment).filter(SystemIpAssignment.node_id == target_id).first():
+        raise HTTPException(status_code=409, detail="체계 구성에 IP/NIC가 할당된 노드입니다. IP·포트·통신 연결 설정을 먼저 해제해 주세요.")
     db.delete(target)
     db.commit()
     return {"ok": True}

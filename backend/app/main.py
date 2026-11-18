@@ -8,7 +8,7 @@ from .database import Base, engine, SessionLocal
 from .models import User, UserRole, Project, Message, MessageField
 from .auth import hash_password
 from .schemas import SUPPORTED_TYPES
-from .routers import auth, projects, messages, groups, export, history, backups, project_json, partial_update, labels, integration_targets, merge_tools, collaboration
+from .routers import auth, projects, messages, groups, export, history, backups, project_json, partial_update, labels, integration_targets, merge_tools, collaboration, system_configuration
 
 app = FastAPI(title="Interfy", version="0.1.0")
 
@@ -59,6 +59,12 @@ def apply_lightweight_migrations():
         _add_column_if_missing(conn, "message_fields", "value_range", "value_range TEXT")
         _add_column_if_missing(conn, "message_fields", "unit", "unit VARCHAR(120)")
         _add_column_if_missing(conn, "message_fields", "note", "note TEXT")
+        # Existing feature-branch databases may already contain the transport
+        # connections table; retain them while adding optional port binding FKs.
+        _add_column_if_missing(conn, "system_transport_connections", "server_binding_id",
+                               "server_binding_id INTEGER NULL REFERENCES system_port_bindings(id)")
+        _add_column_if_missing(conn, "system_transport_connections", "client_binding_id",
+                               "client_binding_id INTEGER NULL REFERENCES system_port_bindings(id)")
         _add_column_if_missing(conn, "users", "is_deleted", "is_deleted BOOLEAN DEFAULT FALSE NOT NULL")
         _add_column_if_missing(conn, "users", "display_name", "display_name VARCHAR(255)")
         # Preserve audit/backup attribution before a user account is permanently removed.
@@ -280,3 +286,4 @@ app.include_router(labels.router)
 app.include_router(integration_targets.router)
 app.include_router(merge_tools.router)
 app.include_router(collaboration.router)
+app.include_router(system_configuration.router)

@@ -597,3 +597,112 @@ class BackupEventRead(BaseModel):
     created_by_name: Optional[str] = None
     created_at: datetime
     model_config = {"from_attributes": True}
+
+
+# System configuration (kept separate from message/interface definition models).
+class SystemNodeProfileUpdate(BaseModel):
+    device_id: Optional[int] = Field(default=None, ge=1)
+    hardware_name: str = Field(default="", max_length=120)
+    hostname: str = Field(default="", max_length=120)
+    software_id: str = Field(default="", max_length=120)
+    hardware_id: str = Field(default="", max_length=120)
+    note: str = ""
+
+
+class SystemIpCreate(BaseModel):
+    node_id: int
+    interface_name: str = Field(default="", max_length=120)
+    ip_address: str = Field(min_length=1, max_length=45)
+    is_reserved: bool = False
+    note: str = ""
+
+
+class SystemIpUpdate(BaseModel):
+    node_id: Optional[int] = None
+    interface_name: Optional[str] = Field(default=None, max_length=120)
+    ip_address: Optional[str] = Field(default=None, min_length=1, max_length=45)
+    is_reserved: Optional[bool] = None
+    note: Optional[str] = None
+
+
+class SystemPortBindingCreate(BaseModel):
+    ip_assignment_id: int
+    protocol: str = "TCP"
+    port_mode: str = "FIXED"
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+    description: str = ""
+
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, value: str) -> str:
+        value = str(value or "").strip().upper()
+        if value not in {"TCP", "UDP"}:
+            raise ValueError("TCP/UDP만 지원합니다.")
+        return value
+
+    @field_validator("port_mode")
+    @classmethod
+    def validate_port_mode(cls, value: str) -> str:
+        value = str(value or "").strip().upper()
+        if value not in {"FIXED", "AUTO"}:
+            raise ValueError("FIXED 또는 AUTO 중 선택하세요.")
+        return value
+
+
+class SystemPortBindingUpdate(BaseModel):
+    protocol: Optional[str] = None
+    port_mode: Optional[str] = None
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+    description: Optional[str] = None
+
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, value: Optional[str]) -> Optional[str]:
+        return SystemPortBindingCreate.validate_protocol(value) if value is not None else None
+
+    @field_validator("port_mode")
+    @classmethod
+    def validate_port_mode(cls, value: Optional[str]) -> Optional[str]:
+        return SystemPortBindingCreate.validate_port_mode(value) if value is not None else None
+
+
+class SystemConnectionCreate(BaseModel):
+    # Legacy IP/PORT fields remain optional for the previous connection API.
+    # New UI always uses the two port-binding IDs instead.
+    server_ip_id: Optional[int] = None
+    server_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    client_ip_id: Optional[int] = None
+    client_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    server_binding_id: Optional[int] = None
+    client_binding_id: Optional[int] = None
+    protocol: str = "TCP"
+    note: str = ""
+
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, value: str) -> str:
+        value = str(value or "").strip().upper()
+        if value not in {"TCP", "UDP"}:
+            raise ValueError("통신 프로토콜은 TCP 또는 UDP만 가능합니다.")
+        return value
+
+
+class SystemConnectionUpdate(BaseModel):
+    server_binding_id: Optional[int] = None
+    client_binding_id: Optional[int] = None
+    server_ip_id: Optional[int] = None
+    server_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    client_ip_id: Optional[int] = None
+    client_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    protocol: Optional[str] = None
+    note: Optional[str] = None
+
+    @field_validator("protocol")
+    @classmethod
+    def validate_protocol(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = str(value).strip().upper()
+        if value not in {"TCP", "UDP"}:
+            raise ValueError("통신 프로토콜은 TCP 또는 UDP만 가능합니다.")
+        return value

@@ -12,6 +12,8 @@ from ..database import get_db
 from ..models import (
     ChangeType,
     IntegrationTarget,
+    SystemIpAssignment,
+    SystemNodeProfile,
     Message,
     MessageChangeHistory,
     MessageEnumValue,
@@ -123,6 +125,15 @@ def _target_merge_preview(db: Session, project_id: int, target_id: int, source_i
                 "name": message.name,
             })
 
+    blockers: list[str] = []
+    for source in sources:
+        if db.query(SystemIpAssignment).filter(SystemIpAssignment.node_id == source.id).first():
+            blockers.append(f"{source.name}: 체계 구성 IP/NIC 설정이 있어 노드 머지 전에 구성을 정리해야 합니다.")
+        profile = db.query(SystemNodeProfile).filter(SystemNodeProfile.node_id == source.id).first()
+        if profile and (profile.device_id is not None or profile.hardware_name or profile.hostname
+                        or profile.software_id or profile.hardware_id or profile.note):
+            blockers.append(f"{source.name}: 장비 ID/HW 식별 정보가 있어 소스 노드를 바로 머지할 수 없습니다.")
+
     return {
         "kind": "TARGET",
         "target": {"id": target.id, "name": target.name, "description": target.description or ""},
@@ -135,7 +146,7 @@ def _target_merge_preview(db: Session, project_id: int, target_id: int, source_i
             "duplicate_link_count": duplicate_links,
         },
         "affected_messages": messages,
-        "blockers": [],
+        "blockers": blockers,
     }
 
 
@@ -159,6 +170,8 @@ def apply_target_merge(
     current_user: User = Depends(get_current_user),
 ):
     preview = _target_merge_preview(db, project_id, payload.target_id, payload.source_ids)
+    if preview["blockers"]:
+        raise HTTPException(status_code=409, detail=" / ".join(preview["blockers"]))
     target, sources = _target_rows(db, project_id, payload.target_id, payload.source_ids)
 
     # A merge removes the source nodes; save a restorable project snapshot in

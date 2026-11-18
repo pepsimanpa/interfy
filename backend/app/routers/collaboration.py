@@ -29,10 +29,15 @@ router = APIRouter(tags=["collaboration"])
 
 class PartnerExportRequest(BaseModel):
     target_ids: list[int] = Field(min_length=1)
+    direction: str = "all"  # "tx", "rx" or "all"; old clients default to both
 
 
-def build_partner_package(project_data: dict[str, Any], selected_names: list[str], node_ids: dict[str, int] | None = None, project_id: int | None = None, message_ids: dict[str, int] | None = None) -> dict[str, Any]:
+
+def build_partner_package(project_data: dict[str, Any], selected_names: list[str], node_ids: dict[str, int] | None = None, project_id: int | None = None, message_ids: dict[str, int] | None = None, direction: str = "all") -> dict[str, Any]:
     """Pure subset builder, also useful from regression tests."""
+    direction = (direction or "all").strip().lower()
+    if direction not in {"tx", "rx", "all"}:
+        raise HTTPException(status_code=422, detail="송수신 기준은 tx, rx, all 중 하나여야 합니다.")
     selected = {name.lower() for name in selected_names}
     messages = project_data.get("messages", [])
     indexed = {str(row.get("struct_name") or row.get("name") or "").lower(): row for row in messages}
@@ -40,8 +45,8 @@ def build_partner_package(project_data: dict[str, Any], selected_names: list[str
     initial = [
         row for row in messages
         if selected.intersection({
-            *(str(name).lower() for name in row.get("tx_targets", [])),
-            *(str(name).lower() for name in row.get("rx_targets", [])),
+            *(str(name).lower() for name in row.get("tx_targets", []) if direction in {"tx", "all"}),
+            *(str(name).lower() for name in row.get("rx_targets", []) if direction in {"rx", "all"}),
         })
     ]
     included = {row["struct_name"].lower() for row in initial}
@@ -120,7 +125,7 @@ def export_partner_package(
     node_ids = {node.name.lower(): node.id for node in all_nodes}
     all_messages = db.query(Message).filter(Message.project_id == project_id).all()
     message_ids = {(message.struct_name or message.name).lower(): message.id for message in all_messages}
-    content = build_partner_package(project_data, [target.name for target in targets], node_ids, project_id, message_ids)
+    content = build_partner_package(project_data, [target.name for target in targets], node_ids, project_id, message_ids, direction=payload.direction)
     base = _safe_filename_part(project.acronym or project.name or "interfy")
     return _json_response(content, f"{base}-partner-package.json")
 
