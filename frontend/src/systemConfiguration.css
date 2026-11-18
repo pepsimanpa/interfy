@@ -31,8 +31,17 @@
 .system-config-form { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 12px; align-items: end; margin-top: 12px; }
 .system-config-form > label { min-width: 0; }
 .system-config-form.system-config-form-compact { grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 12px; }
-.system-config-form-compact > label { grid-column: 1 / -1; }
-.system-config-form-compact input, .system-config-form-compact select { min-width: 0; width: 100%; }
+/* Compact editors: name and input share one row, without changing CRUD behavior. */
+.system-config-form-compact > label {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.system-config-form-compact .system-config-label-text { min-width: 0; white-space: nowrap; }
+.system-config-form-compact input, .system-config-form-compact select, .system-config-form-compact textarea { min-width: 0; width: 100%; }
 .system-config-form .wide { grid-column: 1 / -1; }
 .system-config-form .system-config-check { display: flex; align-items: center; gap: 8px; min-height: 36px; }
 .system-config-form .system-config-check input { width: auto; }
@@ -55,6 +64,7 @@
 }
 @media (max-width: 560px) {
   .system-config-form { grid-template-columns: minmax(0, 1fr); }
+  .system-config-form-compact > label { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 
 /* Shared graph layout mirrors Interface Design's node pane and SVG graph. */
