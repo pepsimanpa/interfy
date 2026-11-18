@@ -234,7 +234,7 @@ class UnifiedExportTests(unittest.TestCase):
         )
         result = asyncio.run(apply_partial_update(
             self.project.id, file=upload, selected_names='["T_SENT"]',
-            field_mode="REPLACE", protocol_mode="REPLACE", relation_mode="PARTIAL",
+            infocode_overrides="{}", field_mode="REPLACE", protocol_mode="REPLACE", relation_mode="PARTIAL",
             db=self.db, current_user=self.user,
         ))
         self.assertEqual(result["updated_count"], 1)
