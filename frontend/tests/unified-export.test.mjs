@@ -34,7 +34,9 @@ test('all scopes share the same format selection with supported export routes', 
   assert.match(ui, /'\/labels\/' \+ label\.id \+ '\/export\/'/);
   assert.match(ui, /'\/projects\/' \+ project\.id \+ '\/export\/nodes\/'/);
   assert.match(ui, /'\/projects\/' \+ project\.id \+ '\/collaboration\/export'/);
-  assert.match(ui, /target_ids: selectedNodeIds, direction/);
+  assert.match(ui, /target_ids: selectedNodeIds/);
+  assert.match(ui, /direction,/);
+  assert.match(ui, /restrict_relations: restrictRelations/);
 });
 
 test('per-scope settings remain selected when switching output ranges', () => {
@@ -51,4 +53,22 @@ test('offline editor/partial update remain in the top tools and IDD is separate'
   assert.match(ui, /exportIdd\('docx'\)/);
   assert.match(ui, /exportIdd\('hwpx'\)/);
   assert.match(ui, /scope === 'nodes' && selectedNodeIds\.length > 0/);
+});
+
+
+test('optional JSON-only scoped relationships are forwarded to the backend', () => {
+  assert.match(ui, /const \[restrictRelations, setRestrictRelations\] = useState\(false\)/);
+  assert.match(ui, /format === 'json' && \(/);
+  assert.match(ui, /선택한 노드의 송수신 관계만 포함/);
+  assert.match(ui, /\{ restrict_relations: restrictRelations \}/);
+  assert.match(css, /\.unified-export-restrict-relations \{/);
+});
+
+test('partial update offers ignore, selective delta merge and explicit overwrite', () => {
+  assert.match(main, /const nextRelationMode = isPartner \? 'PARTIAL' : 'IGNORE'/);
+  assert.match(main, /<option value="IGNORE">반영 안 함<\/option>/);
+  assert.match(main, /<option value="PARTIAL" disabled=\{!partnerPackage\}>부분 반영 \(추가·삭제\)<\/option>/);
+  assert.match(main, /<option value="REPLACE">덮어쓰기 \(JSON 기준\)<\/option>/);
+  assert.match(main, /relationMode === 'REPLACE' && !confirm\(/);
+  assert.match(main, /'relation_mode', relationMode/);
 });
