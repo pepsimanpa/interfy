@@ -5,7 +5,7 @@ import SystemTopologyGraph from './SystemTopologyGraph.jsx';
 import { filterTransportConnections } from './systemTopologyData.js';
 
 const EMPTY_CONFIGURATION = { nodes: [], ip_assignments: [], port_bindings: [], connections: [] };
-const EMPTY_IP = { node_id: '', interface_name: '', ip_address: '', is_reserved: false, note: '' };
+const EMPTY_IP = { node_id: '', interface_name: '', ip_address: '', note: '' };
 const EMPTY_PORT = { ip_assignment_id: '', protocol: 'TCP', port_mode: 'FIXED', port: '', description: '' };
 const EMPTY_CONNECTION = { server_binding_id: '', client_binding_id: '', note: '' };
 
@@ -114,7 +114,7 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
 
   function selectIpForEdit(item) {
     setEditingIp(item.id);
-    setIpDraft({ node_id: String(item.node_id), interface_name: item.interface_name, ip_address: item.ip_address, is_reserved: item.is_reserved, note: item.note || '' });
+    setIpDraft({ node_id: String(item.node_id), interface_name: item.interface_name, ip_address: item.ip_address, note: item.note || '' });
   }
 
   function clearIpForm() {
@@ -310,9 +310,8 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
             <h3>{editingIp == null ? 'IP 할당 추가' : 'IP 할당 수정'}</h3>
             <form className="system-config-form system-config-form-compact" onSubmit={saveIp}>
               <NodePicker nodes={nodes} value={ipDraft.node_id} onChange={value => setIpDraft({ ...ipDraft, node_id: value })}/>
-              <label>NIC / IP 구분<input maxLength={120} placeholder="예: NIC1, reserved1" value={ipDraft.interface_name} onChange={e => setIpDraft({ ...ipDraft, interface_name: e.target.value })}/></label>
+              <label>NIC / IP 구분<input maxLength={120} placeholder="예: NIC1, eth0" value={ipDraft.interface_name} onChange={e => setIpDraft({ ...ipDraft, interface_name: e.target.value })}/></label>
               <label>IP 주소<input required placeholder="192.168.7.70" value={ipDraft.ip_address} onChange={e => setIpDraft({ ...ipDraft, ip_address: e.target.value })}/></label>
-              <label className="system-config-check"><input type="checkbox" checked={ipDraft.is_reserved} onChange={e => setIpDraft({ ...ipDraft, is_reserved: e.target.checked })}/> 예약 IP</label>
               <label className="wide">비고<input value={ipDraft.note} onChange={e => setIpDraft({ ...ipDraft, note: e.target.value })}/></label>
               <div className="system-config-actions">
                 {editingIp != null && <button type="button" className="ghost" onClick={clearIpForm}>수정 취소</button>}
@@ -322,17 +321,17 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
           </section>
           <section className="card system-config-list">
             <h3>IP 주소 할당</h3>
-            <p>예약 주소는 별도 노드가 아니라 해당 SW의 예약 IP로 등록합니다. 프로젝트 내 중복 IP는 차단됩니다.</p>
-            <div className="table-wrap"><table className="system-config-table">
-              <thead><tr><th>노드</th><th>NIC / 구분</th><th>IP 주소</th><th>상태</th><th>비고</th><th>관리</th></tr></thead>
+            <p>프로젝트 내 중복 IP는 등록할 수 없습니다.</p>
+            <div className="table-wrap"><table className="system-config-table system-config-ip-table">
+              <thead><tr><th>노드</th><th>NIC / 구분</th><th>IP 주소</th><th>비고</th><th>관리</th></tr></thead>
               <tbody>{ips.map(item => (
                 <tr key={item.id}>
                   <td>{item.node_name}</td><td>{item.interface_name || '—'}</td><td className="mono">{item.ip_address}</td>
-                  <td>{item.is_reserved ? '예약' : '사용'}</td><td>{item.note || '—'}</td>
+                  <td>{item.note || '—'}</td>
                   <td><div className="system-config-row-actions"><button type="button" className="ghost" onClick={() => selectIpForEdit(item)}>수정</button><button type="button" className="danger" onClick={() => deleteIp(item)} aria-label={`${item.ip_address} 삭제`}><Trash2 size={14}/></button></div></td>
                 </tr>
               ))}
-              {!ips.length && <tr><td colSpan={6}>등록된 IP가 없습니다.</td></tr>}</tbody>
+              {!ips.length && <tr><td colSpan={5}>등록된 IP가 없습니다.</td></tr>}</tbody>
             </table></div>
           </section>
           </div>
