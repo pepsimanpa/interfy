@@ -23,6 +23,10 @@ nav{display:flex;border-bottom:1px solid #383a3d}nav button{flex:1;border:0;bord
 nav button.active{background:#313943;border-bottom:2px solid #82b0d7}
 .sidebar-tools{display:grid;grid-template-columns:1fr auto;gap:7px;padding:10px}
 .list{overflow:auto;flex:1} .list-item{display:block;border:0;border-bottom:1px solid #2b2d30;border-radius:0;background:transparent;text-align:left;width:100%;padding:10px 13px;overflow-wrap:anywhere}
+.related-message{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:10px 12px;border:0;border-bottom:1px solid #3b3e43;border-radius:0;background:transparent;text-align:left;color:inherit;overflow-wrap:anywhere}
+.related-message:hover,.related-message:focus-visible{background:#303b47;outline:1px solid #82b0d7;outline-offset:-1px}
+.related-message .related-name{font-weight:600}
+.related-message .related-meta{font-size:11px;color:#a0a3aa}
 .list-item.active{background:#303b47} .list-item strong{display:block;font-size:12px;margin-bottom:4px} .list-item small{display:block;color:#9c9fa5;font-size:10px}
 main{overflow:auto;padding:20px 22px 50px;min-width:0}.editor{max-width:1060px}
 .section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:15px}
@@ -34,6 +38,16 @@ main{overflow:auto;padding:20px 22px 50px;min-width:0}.editor{max-width:1060px}
 .panel-head h3{margin:0}.node-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:6px}
 .node-checks label{display:flex;align-items:center;gap:7px;background:#292b2e;border:1px solid #3c3f43;padding:7px;border-radius:5px;font-size:11px;cursor:pointer;overflow-wrap:anywhere}
 .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:880px}
+.resizable-table{table-layout:fixed;width:max-content;min-width:0}
+.resizable-table th{position:relative;white-space:nowrap;user-select:none}
+.resizable-table .col-resizer{position:absolute;right:-5px;top:0;bottom:0;width:10px;z-index:2;cursor:col-resize;touch-action:none}
+.resizable-table .col-resizer:hover,.resizable-table .col-resizer.dragging{background:rgba(130,176,215,.45)}
+.resizable-table td{overflow:hidden}
+.resizable-table td input,.resizable-table td select,.resizable-table td textarea{width:100%;min-width:0;max-width:100%}
+.resizable-table .field-range-cell{min-width:0}
+.resizable-table .field-range{width:100%;min-width:0;resize:vertical}
+.resizable-table td .controls{white-space:nowrap}
+body.resizing-columns{cursor:col-resize!important;user-select:none!important}
 th{text-align:left;font-size:10px;color:#aaa;font-weight:600;background:#2a2c30}
 td,th{padding:6px;border:1px solid #414348}td input,td select{padding:6px;min-width:88px}
 td textarea{min-width:140px;min-height:36px;padding:5px}
@@ -42,6 +56,25 @@ td .controls{display:flex;gap:3px}td .controls button{padding:5px}
 .message{color:#c9d7e8}.warn{color:#e6b97b}.error{color:#ffa39f}
 .empty{text-align:center;color:#9ca0a5;padding:50px 20px}.pill{display:inline-block;background:#384655;border:1px solid #506477;color:#cfe2f4;padding:2px 7px;border-radius:30px;font-size:10px;margin-left:6px}
 .help{border-left:3px solid #70889d;margin-top:12px;padding:9px 12px;color:#b7bbc0;background:#292c31}
+.diagram-scroll{overflow:auto;border:1px solid #393f47;border-radius:8px;background:#191d23}
+.node-diagram{display:block;width:100%;min-width:860px;height:auto;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif}
+.node-diagram .edge{fill:none;stroke-width:2.4;opacity:.92;pointer-events:none}
+.node-diagram .edge.in{stroke:#67c9ba}.node-diagram .edge.out{stroke:#89b7ee}
+.node-diagram .edge-hit{fill:none;stroke:transparent;stroke-width:22;cursor:pointer;pointer-events:stroke}
+.node-diagram .edge-group:hover .edge{stroke-width:4;opacity:1}
+.node-diagram .edge-group.selected .edge{stroke:#ffcf7d;stroke-width:4;opacity:1}
+.node-diagram .edge-group:focus-visible .edge{stroke:#ffcf7d;stroke-width:4;opacity:1}
+.node-diagram .edge-group{outline:none}
+.node-diagram .node-box{fill:#29323a;stroke:#607381;stroke-width:1.1}
+.node-diagram .hub{fill:#314d66;stroke:#94badd;stroke-width:1.8}
+.node-diagram .node-select{cursor:pointer;outline:none}
+.node-diagram .node-select:hover .node-box,.node-diagram .node-select:focus-visible .node-box,.node-diagram .node-select.selected .node-box{fill:#3b5266;stroke:#ffcf7d;stroke-width:2}
+.node-diagram .node-select:hover .hub,.node-diagram .node-select:focus-visible .hub{stroke:#ffcf7d;stroke-width:2.5}
+.field-range{width:290px;min-width:240px;min-height:112px;line-height:1.6;resize:both;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}
+.field-range-cell{min-width:265px;vertical-align:top}
+.node-diagram text{fill:#e1e9f0;font-size:12px;pointer-events:none}
+.node-diagram .dim{fill:#9eacba;font-size:10px}
+.node-diagram .lane-in{fill:#83d7cb}.node-diagram .lane-out{fill:#a0c7f5}
 @media(max-width:750px){.layout{grid-template-columns:190px 1fr}main{padding:12px}.form{grid-template-columns:1fr}header{flex-wrap:wrap}header .actions{margin-left:0}}
 </style>
 </head>
@@ -68,7 +101,8 @@ td .controls{display:flex;gap:3px}td .controls button{padding:5px}
 <script>
 'use strict';
 (function(){
-var data=null, tab='nodes', active=-1, dirty=false, filename='interfy-partner-edited.json', fileHandle=null, saving=false;
+var data=null, tab='nodes', active=-1, selectedEdge=null, dirty=false, filename='interfy-partner-edited.json', fileHandle=null, saving=false;
+var tableWidths={STRUCT:[145,112,160,110,150,300,95,150,115],ENUM:[180,140,290,115]};
 var basic=['bool','char','int8','uint8','int16','uint16','int32','uint32','int64','uint64','float','double'];
 var enumTypes=['int8','uint8','int16','uint16','int32','uint32','int64','uint64'];
 var ident=/^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -100,7 +134,7 @@ async function load(file,handle){
   var text=await file.text(),next=JSON.parse(text);
   norm(next);
   // Keep the previous handle if the new JSON cannot be read or parsed.
-  data=next;fileHandle=handle||null;dirty=false;active=-1;
+  data=next;fileHandle=handle||null;dirty=false;active=-1;selectedEdge=null;
   filename=file.name;render();
   status('불러오기 완료: '+filename+(fileHandle?' · 원본 덮어쓰기 가능':' · 저장 시 파일 선택/다운로드'),'message');
  }catch(e){alert('파일을 열 수 없습니다.\n'+e.message);}
@@ -122,7 +156,7 @@ async function openProject(){
   alert('원본 파일을 열 수 없습니다.\n'+e.message);
  }
 }
-function changeTab(next){tab=next;active=-1;render();}
+function changeTab(next){tab=next;active=-1;selectedEdge=null;render();}
 function render(){
  $('tab-nodes').classList.toggle('active',tab==='nodes');$('tab-messages').classList.toggle('active',tab==='messages');
  var q=$('search').value.trim().toLowerCase();var rows=records();var list='';
@@ -135,12 +169,96 @@ function render(){
  $('editor').innerHTML=!data?'<div class="empty"><h2>작업 패키지 열기</h2><p>Interfy에서 내보낸 JSON을 먼저 불러와 주세요.</p></div>':active<0?'<div class="empty">왼쪽에서 노드 또는 메시지를 선택하세요.</div>':tab==='nodes'?renderNode():renderMessage();
  stats();
 }
+// Node-centric topology derived only from existing tx_targets/rx_targets arrays.
+// Each row depicts a possible message route, not a runtime-delivery guarantee.
+function nodeTopology(nodeName){
+ var peerMap=new Map();
+ function ensurePeer(peer){
+  if(peer===nodeName||!peer)return null;
+  if(!peerMap.has(peer))peerMap.set(peer,{name:peer,inboundCount:0,outboundCount:0});
+  return peerMap.get(peer);
+ }
+ data.messages.forEach(function(m){
+  if(m.definition_type==='ENUM')return;
+  var tx=m.tx_targets||[],rx=m.rx_targets||[];
+  if(rx.includes(nodeName))tx.forEach(function(peer){var p=ensurePeer(peer);if(p)p.inboundCount++;});
+  if(tx.includes(nodeName))rx.forEach(function(peer){var p=ensurePeer(peer);if(p)p.outboundCount++;});
+ });
+ var peers=Array.from(peerMap.values()).sort(function(a,b){return a.name.localeCompare(b.name,'ko');});
+ return {peers:peers,inbound:peers.reduce(function(n,p){return n+p.inboundCount;},0),outbound:peers.reduce(function(n,p){return n+p.outboundCount;},0)};
+}
+function diagramText(s,max){s=String(s||'');return esc(s.length>max?s.slice(0,max-1)+'…':s);}
+function edgeMessages(nodeName,peer,direction){
+ var sender=direction==='in'?peer:nodeName,receiver=direction==='in'?nodeName:peer;
+ return data.messages.filter(function(m){return m.definition_type!=='ENUM'&&(m.tx_targets||[]).includes(sender)&&(m.rx_targets||[]).includes(receiver);});
+}
+function renderNodeDiagram(nodeName){
+ var topology=nodeTopology(nodeName),peers=topology.peers;
+ if(!peers.length)return '<div class="panel"><h3>관계도</h3><p class="hint">다른 노드와 연결된 메시지 관계가 없습니다.</p></div>';
+ var w=980,h=Math.max(450,260+peers.length*42),cx=490,cy=h/2;
+ var rx=310,ry=Math.max(155,Math.min(h/2-85,140+peers.length*10));
+ var svg='<svg class="node-diagram" viewBox="0 0 '+w+' '+h+'" role="group" aria-label="'+esc(nodeName)+'의 노드 간 단방향 관계도">'+
+ '<defs><marker id="arrow-in" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#67c9ba"/></marker>'+
+ '<marker id="arrow-out" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#89b7ee"/></marker>'+ 
+ '<marker id="arrow-selected" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#ffcf7d"/></marker></defs>';
+ function curved(x1,y1,x2,y2,bend){
+  var dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy)||1,nx=-dy/len,ny=dx/len;
+  return 'M'+x1+' '+y1+' C'+(x1+dx*.25+nx*bend)+' '+(y1+dy*.25+ny*bend)+' '+(x1+dx*.75+nx*bend)+' '+(y1+dy*.75+ny*bend)+' '+x2+' '+y2;
+ }
+ function drawEdge(peer,dir,path,count){
+  var chosen=selectedEdge&&selectedEdge.node===nodeName&&selectedEdge.peer===peer.name&&selectedEdge.direction===dir;
+  var from=dir==='in'?peer.name:nodeName,to=dir==='in'?nodeName:peer.name;
+  return '<g class="edge-group'+(chosen?' selected':'')+'" data-edge-peer="'+esc(peer.name)+'" data-edge-direction="'+dir+'" tabindex="0" role="button" aria-label="'+esc(from+'에서 '+to+'로 송신하는 메시지 '+count+'개 보기')+'">'+
+  '<title>'+esc(from+' → '+to+' ('+count+'개 메시지) — 클릭하여 아래 목록 필터링')+'</title>'+
+  '<path class="edge '+dir+'" d="'+path+'" marker-end="url(#'+(chosen?'arrow-selected':dir==='in'?'arrow-in':'arrow-out')+')"/>'+
+  '<path class="edge-hit" d="'+path+'"/></g>';
+ }
+ peers.forEach(function(peer,i){
+  var angle=-Math.PI/2+2*Math.PI*i/peers.length,x=cx+Math.cos(angle)*rx,y=cy+Math.sin(angle)*ry;
+  var dx=x-cx,dy=y-cy,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len;
+  // Both arrowheads point to one destination. Opposite directions are separate parallel one-way curves.
+  var hubX=cx+ux*83,hubY=cy+uy*51,nodeX=x-ux*73,nodeY=y-uy*26;
+  if(peer.inboundCount)svg+=drawEdge(peer,'in',curved(nodeX,nodeY,hubX,hubY,-22),peer.inboundCount);
+  if(peer.outboundCount)svg+=drawEdge(peer,'out',curved(hubX,hubY,nodeX,nodeY,-22),peer.outboundCount);
+  var peerSelected=selectedEdge&&selectedEdge.node===nodeName&&selectedEdge.peer===peer.name&&selectedEdge.direction==='both';
+  svg+='<g class="node-select'+(peerSelected?' selected':'')+'" data-diagram-node="'+esc(peer.name)+'" tabindex="0" role="button" aria-label="'+esc(peer.name+'와 송수신하는 모든 메시지 보기')+'">'+
+  '<title>'+esc(peer.name+' 관련 송수신 메시지 전체 보기')+'</title>'+
+  '<rect class="node-box" x="'+(x-70)+'" y="'+(y-22)+'" width="140" height="44" rx="8"/>'+
+  '<text x="'+x+'" y="'+(y+4)+'" text-anchor="middle">'+diagramText(peer.name,17)+'</text></g>';
+ });
+ svg+='<g class="node-select" data-diagram-node="'+esc(nodeName)+'" tabindex="0" role="button" aria-label="'+esc(nodeName+' 관련 모든 메시지 보기')+'">'+
+ '<title>선택 노드의 전체 연결 메시지 보기</title>'+
+ '<rect class="hub" x="'+(cx-80)+'" y="'+(cy-48)+'" width="160" height="96" rx="12"/>'+
+ '<text x="'+cx+'" y="'+(cy-11)+'" text-anchor="middle" class="dim">선택 노드</text>'+
+ '<text x="'+cx+'" y="'+(cy+13)+'" text-anchor="middle" font-weight="bold">'+diagramText(nodeName,19)+'</text></g></svg>';
+ return '<div class="panel"><h3>관계도</h3><div class="diagram-scroll">'+svg+'</div></div>';
+}
 function renderNode(){
- var n=selected(), related=data.messages.filter(function(m){return m.tx_targets.indexOf(n.name)>=0||m.rx_targets.indexOf(n.name)>=0;});
- return '<div class="section-title"><h2>노드 수정</h2><button class="danger" data-action="delete-node">노드 삭제</button></div>'+
- '<div class="panel"><div class="form">'+field('name','노드 이름',n.name)+field('description','설명',n.description||'',true)+'</div></div>'+
- '<div class="panel"><h3>연결된 메시지 ('+related.length+')</h3>'+
- (related.map(function(m){return '<p style="padding:7px 0;border-bottom:1px solid #3b3e43">'+esc(m.struct_name)+' <span class="hint">'+(m.tx_targets.indexOf(n.name)>=0?'송신 ':'')+(m.rx_targets.indexOf(n.name)>=0?'수신':'')+'</span></p>';}).join('')||'<p class="hint">연결된 메시지가 없습니다.</p>')+'</div>';
+ var n=selected(),related=data.messages.filter(function(m){return (m.tx_targets||[]).includes(n.name)||(m.rx_targets||[]).includes(n.name);});
+ var filtering=selectedEdge&&selectedEdge.node===n.name;
+ var entries=[];
+ if(filtering){
+  var peer=selectedEdge.peer;
+  if(selectedEdge.direction==='in'||selectedEdge.direction==='both'){
+   edgeMessages(n.name,peer,'in').forEach(function(m){entries.push({message:m,from:peer,to:n.name});});
+  }
+  if(selectedEdge.direction==='out'||selectedEdge.direction==='both'){
+   edgeMessages(n.name,peer,'out').forEach(function(m){entries.push({message:m,from:n.name,to:peer});});
+  }
+ }else{
+  related.forEach(function(m){
+   var tx=m.tx_targets||[],rx=m.rx_targets||[];
+   if(tx.includes(n.name))rx.filter(function(peer){return peer!==n.name;}).forEach(function(peer){entries.push({message:m,from:n.name,to:peer});});
+   if(rx.includes(n.name))tx.filter(function(peer){return peer!==n.name;}).forEach(function(peer){entries.push({message:m,from:peer,to:n.name});});
+  });
+ }
+ var title=filtering?(selectedEdge.direction==='both'?selectedEdge.peer+' (전체)':selectedEdge.direction==='in'?selectedEdge.peer+' → '+n.name:n.name+' → '+selectedEdge.peer):'전체';
+ return '<div class="section-title"><h2>노드 수정</h2><button class="danger" data-action="delete-node">노드 삭제</button></div>'+ 
+ '<div class="panel"><div class="form">'+field('name','노드 이름',n.name)+field('description','설명',n.description||'',true)+'</div></div>'+ 
+ renderNodeDiagram(n.name)+
+ '<div class="panel" id="related-messages"><div class="panel-head"><h3>연결된 메시지 ('+entries.length+') <span class="hint">'+esc(title)+'</span></h3>'+ 
+ (filtering?'<button class="small" data-action="clear-edge">전체 보기</button>':'')+'</div>'+ 
+ (entries.map(function(entry){var index=data.messages.indexOf(entry.message);return '<button type="button" class="related-message" data-jump-message="'+index+'" title="메시지 수정 화면으로 이동"><span class="related-name">'+esc(entry.message.struct_name)+'</span><span class="related-meta">'+esc(entry.from+' → '+entry.to)+' · 수정 ›</span></button>';}).join('')||'<p class="hint">관련 메시지가 없습니다.</p>')+'</div>';
 }
 function choiceNodes(kind,names){
  return '<div class="node-checks">'+data.integration_targets.map(function(node,i){return '<label><input type="checkbox" data-direction="'+kind+'" data-node="'+esc(node.name)+'" '+(names.indexOf(node.name)>=0?'checked':'')+'>'+esc(node.name)+'</label>';}).join('')+'</div>';
@@ -150,7 +268,7 @@ function renderMessage(){
  var top='<div class="section-title"><h2>'+esc(m.struct_name||'메시지')+'<span class="pill">'+(isEnum?'ENUM':'STRUCT')+'</span></h2><div><button data-action="copy-message">복사</button> <button class="danger" data-action="delete-message">삭제</button></div></div>';
  var metadata='<div class="panel"><h3>기본 정보</h3><div class="form">'+
  field('struct_name','구조체/Enum 이름',m.struct_name)+field('name','메시지 용도',m.name)+
- '<label>정의 유형<select data-key="definition_type">'+options(['STRUCT','ENUM'],m.definition_type)+'</select></label>'+
+ '<label>정의 유형<select data-key="definition_type">'+options(['STRUCT','ENUM'],m.definition_type)+'</select></label>'+ 
  (isEnum?'<label>Enum 기본 자료형<select data-key="enum_underlying_type">'+options(enumTypes,m.enum_underlying_type||'uint32')+'</select></label>':field('period','주기 (ms 또는 비주기)',m.period||'비주기'))+
  (!isEnum?field('infocode','정보코드',m.infocode||'')+field('protocol','프로토콜 (쉼표 구분)',m.protocol||''):'')+
  paragraph('description','설명',m.description||'')+'</div></div>';
@@ -165,15 +283,20 @@ function renderMessage(){
   else{
    var kind=f.type_kind||'BASIC';
    var choices=kind==='BASIC'?basic:data.messages.filter(function(x){return (x.definition_type==='ENUM'?'ENUM':'MESSAGE')===kind&&x.struct_name!==m.struct_name;}).map(function(x){return x.struct_name;});
-   middle=cell('name',f.name)+'<td><select data-row="'+i+'" data-prop="type_kind">'+options(['BASIC','MESSAGE','ENUM'],kind)+'</select></td>'+
-    '<td><select data-row="'+i+'" data-prop="data_type">'+options(choices,f.data_type||f.ref_message||'')+'</select></td>'+
-    cell('array_dimensions',f.array_dimensions||'')+cell('purpose',f.purpose||'')+cell('value_range',f.value_range||'')+cell('unit',f.unit||'')+cell('note',f.note||'');
+   middle=cell('name',f.name)+'<td><select data-row="'+i+'" data-prop="type_kind">'+options(['BASIC','MESSAGE','ENUM'],kind)+'</select></td>'+ 
+    '<td><select data-row="'+i+'" data-prop="data_type">'+options(choices,f.data_type||f.ref_message||'')+'</select></td>'+ 
+    cell('array_dimensions',f.array_dimensions||'')+cell('purpose',f.purpose||'')+
+    '<td class="field-range-cell"><textarea class="field-range" rows="4" data-row="'+i+'" data-prop="value_range" title="범위 상세 입력 (여러 줄 가능)" placeholder="값 범위, 조건, 제약사항을 여러 줄로 입력">'+esc(f.value_range||'')+'</textarea></td>'+
+    cell('unit',f.unit||'')+cell('note',f.note||'');
   }
   return '<tr>'+middle+'<td><div class="controls"><button data-action="up" data-row="'+i+'" title="위로">↑</button><button data-action="down" data-row="'+i+'" title="아래로">↓</button><button class="danger" data-action="remove-row" data-row="'+i+'" title="삭제">×</button></div></td></tr>';
  }).join('');
- var fields='<div class="panel"><div class="panel-head"><h3>'+(isEnum?'Enum 값':'필드 정의')+' ('+rows.length+')</h3><button data-action="add-row">+ 추가</button></div>'+
- '<div class="table-wrap"><table><thead><tr>'+headers.map(function(x){return '<th>'+x+'</th>';}).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>'+
- '<p class="hint" style="margin-top:10px">필드 자료형은 Interfy 기본 타입이나 현재 패키지의 STRUCT/ENUM에서 선택합니다. 필드 순서는 ↑/↓ 버튼으로 바꿀 수 있습니다.</p></div>';
+ var layoutKey=isEnum?'ENUM':'STRUCT',widths=tableWidths[layoutKey];
+ var colgroup='<colgroup>'+widths.map(function(w){return '<col style="width:'+w+'px">';}).join('')+'</colgroup>';
+ var tableWidth=widths.reduce(function(total,w){return total+w;},0);
+ var fields='<div class="panel"><div class="panel-head"><h3>'+(isEnum?'Enum 값':'필드 정의')+' ('+rows.length+')</h3><button data-action="add-row">+ 추가</button></div>'+ 
+ '<div class="table-wrap"><table class="resizable-table" data-table-kind="'+layoutKey+'" style="width:'+tableWidth+'px">'+colgroup+'<thead><tr>'+headers.map(function(x,i){return '<th>'+esc(x)+'<span class="col-resizer" data-resize-col="'+i+'" title="드래그하여 열 너비 조절"></span></th>';}).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>'+ 
+ '<p class="hint" style="margin-top:10px">열 제목 오른쪽 경계를 드래그하여 너비를 조절할 수 있습니다. 필드 순서는 ↑/↓ 버튼으로 바꿀 수 있습니다.</p></div>';
  return top+metadata+relations+fields;
 }
 function add(){
@@ -352,7 +475,7 @@ $('tab-nodes').addEventListener('click',function(){changeTab('nodes');});
 $('tab-messages').addEventListener('click',function(){changeTab('messages');});
 $('search').addEventListener('input',render);
 $('add').addEventListener('click',add);
-$('list').addEventListener('click',function(e){var b=e.target.closest('[data-select]');if(b){active=Number(b.dataset.select);render();}});
+$('list').addEventListener('click',function(e){var b=e.target.closest('[data-select]');if(b){active=Number(b.dataset.select);selectedEdge=null;render();}});
 $('editor').addEventListener('change',function(e){
  var target=e.target;if(!data||!selected())return;
  if(target.dataset.direction){
@@ -364,12 +487,66 @@ $('editor').addEventListener('change',function(e){
  if(target.dataset.row!==undefined&&target.dataset.prop){changeTableRow(Number(target.dataset.row),target.dataset.prop,target.value);return;}
  if(target.dataset.key)onHeaderChange(target.dataset.key,target.value);
 });
+function refreshNodeEditor(){
+ var main=$('editor').parentElement,scroll=main.scrollTop;
+ render();main.scrollTop=scroll;
+}
+function selectDiagramNode(element){
+ var n=selected();if(!n||tab!=='nodes')return;
+ var peer=element.dataset.diagramNode;
+ if(peer===n.name){selectedEdge=null;}
+ else selectedEdge=selectedEdge&&selectedEdge.node===n.name&&selectedEdge.peer===peer&&selectedEdge.direction==='both'?null:{node:n.name,peer:peer,direction:'both'};
+ refreshNodeEditor();
+}
+function selectDiagramEdge(element){
+ var n=selected();if(!n||tab!=='nodes')return;
+ var peer=element.dataset.edgePeer,direction=element.dataset.edgeDirection;
+ selectedEdge=selectedEdge&&selectedEdge.node===n.name&&selectedEdge.peer===peer&&selectedEdge.direction===direction?null:{node:n.name,peer:peer,direction:direction};
+ refreshNodeEditor();
+}
+// Column widths are UI-only state and do not modify the Interfy JSON.
+$('editor').addEventListener('pointerdown',function(e){
+ var grip=e.target.closest('[data-resize-col]');
+ if(!grip||e.button!==0)return;
+ var table=grip.closest('table.resizable-table'),kind=table.dataset.tableKind;
+ var i=Number(grip.dataset.resizeCol),startX=e.clientX,startWidth=tableWidths[kind][i];
+ var col=table.querySelectorAll('col')[i];
+ var minWidth=i===tableWidths[kind].length-1?94:65;
+ e.preventDefault();grip.classList.add('dragging');document.body.classList.add('resizing-columns');
+ function move(ev){
+  var width=Math.max(minWidth,Math.round(startWidth+ev.clientX-startX));
+  tableWidths[kind][i]=width;
+  col.style.width=width+'px';
+  table.style.width=tableWidths[kind].reduce(function(sum,w){return sum+w;},0)+'px';
+ }
+ function stop(){
+  document.removeEventListener('pointermove',move);
+  document.removeEventListener('pointerup',stop);
+  document.removeEventListener('pointercancel',stop);
+  grip.classList.remove('dragging');document.body.classList.remove('resizing-columns');
+ }
+ document.addEventListener('pointermove',move);
+ document.addEventListener('pointerup',stop);
+ document.addEventListener('pointercancel',stop);
+});
 $('editor').addEventListener('click',function(e){
+ var diagramNode=e.target.closest('[data-diagram-node]');
+ if(diagramNode){selectDiagramNode(diagramNode);return;}
+ var edge=e.target.closest('[data-edge-peer]');
+ if(edge){selectDiagramEdge(edge);return;}
+ var jump=e.target.closest('[data-jump-message]');
+ if(jump){tab='messages';active=Number(jump.dataset.jumpMessage);selectedEdge=null;$('search').value='';render();return;}
  var b=e.target.closest('[data-action]');if(!b)return;
  var action=b.dataset.action;
- if(action==='delete-node'||action==='delete-message')removeSelected();
+ if(action==='clear-edge'){selectedEdge=null;refreshNodeEditor();}
+ else if(action==='delete-node'||action==='delete-message')removeSelected();
  else if(action==='copy-message')copyMessage();
  else if(['add-row','remove-row','up','down'].includes(action))rowAction(action,Number(b.dataset.row));
+});
+$('editor').addEventListener('keydown',function(e){
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-diagram-node]')){e.preventDefault();selectDiagramNode(e.target);return;}
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-edge-peer]')){e.preventDefault();selectDiagramEdge(e.target);return;}
+ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-jump-message]')){e.preventDefault();tab='messages';active=Number(e.target.dataset.jumpMessage);selectedEdge=null;$('search').value='';render();}
 });
 window.addEventListener('beforeunload',function(e){if(!dirty)return;e.preventDefault();e.returnValue='';});
 render();
