@@ -2764,7 +2764,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
   const [conflictEditor, setConflictEditor] = useState(null);
   const [fieldMode, setFieldMode] = useState('MERGE');
   const [protocolMode, setProtocolMode] = useState('MERGE');
-  const [relationMode, setRelationMode] = useState('MERGE');
+  const [relationMode, setRelationMode] = useState('IGNORE');
   const [nodePreview, setNodePreview] = useState(null);
   const [partnerDeletePreview, setPartnerDeletePreview] = useState(null);
   const [partnerRenamePreview, setPartnerRenamePreview] = useState(null);
@@ -2860,11 +2860,12 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
     }
     setPartnerPackage(isPartner);
     const nextMode = isPartner ? 'REPLACE' : 'MERGE';
+    const nextRelationMode = isPartner ? 'PARTIAL' : 'IGNORE';
     setFieldMode(nextMode);
     setProtocolMode(nextMode);
-    setRelationMode(nextMode);
+    setRelationMode(nextRelationMode);
     try {
-      await previewFile(nextFile, {}, false, nextMode, nextMode, nextMode);
+      await previewFile(nextFile, {}, false, nextMode, nextMode, nextRelationMode);
       if (isPartner) {
         await previewPartnerNodes(nextFile);
         await previewPartnerDeletions(nextFile);
@@ -3009,6 +3010,7 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
 
   async function applySelected() {
     if (!file || checkedRows.length === 0) return;
+    if (partnerPackage && relationMode === 'REPLACE' && !confirm('송수신 관계를 JSON 목록으로 전체 덮어씁니다. JSON에서 숨긴 다른 노드의 관계도 삭제될 수 있습니다. 계속할까요?')) return;
     if (selectedConflictCount > 0) {
       alert('선택한 메시지에 정보코드 충돌이 있습니다. 충돌 항목의 정보코드를 수정한 뒤 다시 적용하세요.');
       return;
@@ -3156,11 +3158,18 @@ function PartialUpdatePanel({ api, projectId, onBack, onApplied }) {
               <label>
                 <span>송수신 반영</span>
                 <select value={relationMode} disabled={busy} onChange={e => changeRelationMode(e.target.value)}>
-                  <option value="MERGE">기존 유지 + 추가</option>
-                  <option value="REPLACE">JSON 기준 교체</option>
+                  <option value="IGNORE">반영 안 함</option>
+                  <option value="PARTIAL" disabled={!partnerPackage}>부분 반영 (추가·삭제)</option>
+                  <option value="REPLACE">덮어쓰기 (JSON 기준)</option>
                 </select>
               </label>
-              <span className="partial-update-mode-hint">{partnerPackage ? '협력사 수정본은 교체 모드로 초기 선택됩니다. 메시지 변경은 아래에서 별도 승인하세요.' : fieldMode === 'MERGE' ? '동명 필드는 _1, _2…로 추가' : '누락 필드는 삭제될 수 있음'}</span>
+              <span className="partial-update-mode-hint">
+                {relationMode === 'REPLACE'
+                  ? '주의: JSON에 없는 송수신 노드는 기존 관계에서도 삭제됩니다.'
+                  : relationMode === 'PARTIAL'
+                    ? '출력 당시 기준과 비교해 추가·삭제한 노드만 반영하며, 나머지 관계는 유지합니다.'
+                    : '메시지 변경은 반영하되 기존 송수신 관계는 변경하지 않습니다.'}
+              </span>
             </div>
             <div className="button-row compact">
               <button type="button" className="ghost" onClick={() => selectByStatus('CHANGED')}>변경 전체 선택</button>
