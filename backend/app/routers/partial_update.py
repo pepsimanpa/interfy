@@ -76,6 +76,37 @@ def _parse_partial_mode(raw: str | None, label: str) -> str:
     return mode
 
 
+def _parse_relation_mode(raw: str | None) -> str:
+    mode = str(raw or "MERGE").strip().upper()
+    # Backwards compatibility with old clients that still post MERGE.
+    if mode not in {"IGNORE", "PARTIAL", "REPLACE", "MERGE"}:
+        raise HTTPException(status_code=422, detail="송수신 반영 방식이 올바르지 않습니다.")
+    return mode
+
+
+def _partner_relation_baseline(data: dict[str, Any], mode: str) -> dict[str, dict[str, Any]]:
+    """Read exported TX/RX snapshots for partner delta-merge, not full replacement."""
+    if mode != "PARTIAL":
+        return {}
+    meta = data.get("collaboration")
+    if not isinstance(meta, dict) or meta.get("format") != "interfy-partner-v1":
+        raise HTTPException(status_code=422, detail="송수신 부분 반영은 협력업체 작업 JSON에서만 사용할 수 있습니다.")
+    base_rows = meta.get("base_messages")
+    if not isinstance(base_rows, list):
+        raise HTTPException(status_code=422, detail="부분 반영 기준(base_messages)이 없습니다. 협력업체 JSON을 다시 출력해 주세요.")
+    baseline: dict[str, dict[str, Any]] = {}
+    for row in base_rows:
+        if not isinstance(row, dict):
+            raise HTTPException(status_code=422, detail="송수신 부분 반영 기준이 올바르지 않습니다.")
+        name = str(row.get("struct_name") or "").strip().lower()
+        if not name or name in baseline:
+            raise HTTPException(status_code=422, detail="송수신 부분 반영 기준의 메시지 이름이 올바르지 않습니다.")
+        if any(not isinstance(row.get(role), list) for role in ("tx_targets", "rx_targets")):
+            raise HTTPException(status_code=422, detail="송수신 부분 반영 기준의 노드 목록이 올바르지 않습니다.")
+        baseline[name] = row
+    return baseline
+
+
 def _field_merge_equal(existing: dict[str, Any], incoming: dict[str, Any]) -> bool:
     for field_name, _label in FIELD_COMPARE_FIELDS:
         if field_name == "order":
@@ -124,6 +155,7 @@ def _prepare_partial_messages(
     field_mode: str,
     protocol_mode: str,
     relation_mode: str,
+    relation_baseline: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     existing_by_name = {
         (message.struct_name or message.name).lower(): _message_from_obj(message)
@@ -132,16 +164,39 @@ def _prepare_partial_messages(
     prepared = copy.deepcopy(incoming_messages)
 
     for incoming in prepared:
-        existing = existing_by_name.get(incoming["struct_name"].lower())
+        key = incoming["struct_name"].lower()
+        existing = existing_by_name.get(key)
         if existing is None:
+            if relation_mode == "IGNORE":
+                incoming["tx_targets"] = []
+                incoming["rx_targets"] = []
             continue
 
         if protocol_mode == "MERGE":
             incoming["protocol"] = _merge_protocols(existing.get("protocol"), incoming.get("protocol"))
 
-        if relation_mode == "MERGE":
+        if relation_mode == "IGNORE":
+            # Never interpret omitted/filtered partner roles as deletions.
+            incoming["tx_targets"] = _normalize_target_names(existing.get("tx_targets"))
+            incoming["rx_targets"] = _normalize_target_names(existing.get("rx_targets"))
+        elif relation_mode == "MERGE":
             incoming["tx_targets"] = _merge_target_names(existing.get("tx_targets"), incoming.get("tx_targets"))
             incoming["rx_targets"] = _merge_target_names(existing.get("rx_targets"), incoming.get("rx_targets"))
+        elif relation_mode == "PARTIAL":
+            base = (relation_baseline or {}).get(key)
+            if base is None:
+                raise HTTPException(status_code=409, detail=f"{incoming['struct_name']}의 출력 당시 송수신 기준이 없습니다. 관계를 부분 반영할 수 없습니다.")
+            for role in ("tx_targets", "rx_targets"):
+                before = {name.lower(): name for name in _normalize_target_names(base.get(role))}
+                edited = {name.lower(): name for name in _normalize_target_names(incoming.get(role))}
+                current = _normalize_target_names(existing.get(role))
+                # Only apply differences from the original exported scope. Any
+                # relation not present in that scope is left untouched.
+                removed = before.keys() - edited.keys()
+                additions = [name for key, name in edited.items() if key not in before]
+                incoming[role] = _normalize_target_names(
+                    [name for name in current if name.lower() not in removed] + additions
+                )
 
         if (
             field_mode == "MERGE"
@@ -584,7 +639,8 @@ async def preview_partial_update(
     _apply_infocode_overrides(messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
     parsed_protocol_mode = _parse_partial_mode(protocol_mode, "프로토콜")
-    parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
+    parsed_relation_mode = _parse_relation_mode(relation_mode)
+    relation_baseline = _partner_relation_baseline(_data, parsed_relation_mode)
     existing_messages = _load_existing_messages(db, project_id)
     messages = _prepare_partial_messages(
         existing_messages,
@@ -592,6 +648,7 @@ async def preview_partial_update(
         parsed_field_mode,
         parsed_protocol_mode,
         parsed_relation_mode,
+        relation_baseline,
     )
     entries = _preview_entries(db, project_id, messages)
     return {
@@ -642,7 +699,8 @@ async def apply_partial_update(
     _apply_infocode_overrides(incoming_messages, overrides)
     parsed_field_mode = _parse_partial_mode(field_mode, "필드")
     parsed_protocol_mode = _parse_partial_mode(protocol_mode, "프로토콜")
-    parsed_relation_mode = _parse_partial_mode(relation_mode, "송수신")
+    parsed_relation_mode = _parse_relation_mode(relation_mode)
+    relation_baseline = _partner_relation_baseline(_data, parsed_relation_mode)
 
     existing_messages = _load_existing_messages(db, project_id)
     incoming_messages = _prepare_partial_messages(
@@ -651,6 +709,7 @@ async def apply_partial_update(
         parsed_field_mode,
         parsed_protocol_mode,
         parsed_relation_mode,
+        relation_baseline,
     )
     incoming_by_name = {message["struct_name"].lower(): message for message in incoming_messages}
     missing = sorted(selected_keys - incoming_by_name.keys())
