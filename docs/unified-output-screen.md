@@ -83,4 +83,4 @@ cd ../backend
 python -m unittest discover -s tests -p "test_unified_export.py" -v
 ```
 
-테스트 코드는 추가했지만 GitHub 커넥터 환경에서는 실제 빌드/백엔드 단위 테스트를 실행하지 못했습니다. 실기동 검증 후 머지합니다.
+테스트 코드는 추가했지만 GitHub 커넥터 환경에서는 실제 빌드/백엔드 단위 테스트를 실행하지 못할 수 있습니다. 배포 환경에서 빌드와 회귀 테스트를 실행해 검증하세요.
