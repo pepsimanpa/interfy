@@ -16,6 +16,13 @@
 .system-config-stack h3 { margin-bottom: 12px; }
 .system-config-stack .card-title { align-items: center; }
 .system-config-table { min-width: 700px; }
+/* IP notes get the widest column; keep essential identifiers and actions compact. */
+.system-config-ip-table { min-width: 900px; table-layout: fixed; }
+.system-config-ip-table th:nth-child(1) { width: 16%; }
+.system-config-ip-table th:nth-child(2) { width: 18%; }
+.system-config-ip-table th:nth-child(3) { width: 18%; }
+.system-config-ip-table th:nth-child(4) { width: 38%; }
+.system-config-ip-table th:nth-child(5) { width: 10%; }
 #system-connection-list .system-config-table { min-width: 880px; }
 .system-config-table tr.selected td { background: #eff6ff; }
 .system-config-table th, .system-config-table td { padding: 7px 8px; font-size: 12px; line-height: 1.35; }
