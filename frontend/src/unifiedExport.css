@@ -34,6 +34,8 @@ button.unified-export-tool { background: #fff; color: #334155; font-size: 12px; 
 .unified-export-direction { padding-top: 12px; border-top: 1px solid #e2e8f0; margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 9px 16px; font-size: 12px; }
 .unified-export-direction > span { font-weight: 750; color: #475569; }
 .unified-export-direction > div { display: flex; flex-wrap: wrap; gap: 9px 16px; }
+.unified-export-restrict-relations { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: row; align-items: center; gap: 8px; color: #334155; font-size: 12px; cursor: pointer; }
+.unified-export-restrict-relations input { width: auto; flex: 0 0 auto; margin: 0; accent-color: #2563eb; }
 .unified-export-format-options { display: flex; gap: 9px; flex-wrap: wrap; }
 button.unified-export-format { display: inline-flex; min-width: 96px; justify-content: center; background: #f8fafc; border: 1px solid #d7dfef; color: #475569; padding: 9px 14px; }
 button.unified-export-format.selected { background: #eff6ff; color: #1d4ed8; border-color: #60a5fa; }
@@ -59,7 +61,8 @@ button.unified-export-download { padding: 10px 17px; min-height: 40px; }
 :root[data-theme="dark"] .unified-export-formats legend,
 :root[data-theme="dark"] .unified-export-condition legend,
 :root[data-theme="dark"] .unified-export-node-list label,
-:root[data-theme="dark"] .unified-export-direction label { color: #ccc; }
+:root[data-theme="dark"] .unified-export-direction label,
+:root[data-theme="dark"] .unified-export-restrict-relations { color: #ccc; }
 :root[data-theme="dark"] button.unified-export-format { background: #252526; color: #ccc; border-color: #3e3e42; }
 :root[data-theme="dark"] .unified-export-summary span { color: #bbb; }
 :root[data-theme="dark"] .unified-export-notice { background: #222326; }
