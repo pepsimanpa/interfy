@@ -23,11 +23,10 @@ test('system configuration exposes three modules with CRUD forms', () => {
   assert.match(panel, /api\.del\(/);
 });
 
-test('device profile links to existing node identity, reserved IP and binding-based server/client endpoints', () => {
+test('device profile links to existing node identity and binding-based server/client endpoints', () => {
   assert.match(panel, /item\.node_id/);
   assert.match(panel, /hardware_name/);
   assert.match(panel, /software_id/);
-  assert.match(panel, /is_reserved/);
   assert.match(panel, /server_binding_id/);
   assert.match(panel, /client_binding_id/);
   assert.match(styles, /\.system-config-form/);
@@ -90,4 +89,17 @@ test('communication connection editor has only necessary controls', () => {
   assert.doesNotMatch(section, /IP·PORT 설정<\/button>/);
   assert.doesNotMatch(section, /AUTO는 포트 번호를 사전에 지정하지 않습니다/);
   assert.match(section, /포트 바인딩이 아직 없습니다/);
+});
+
+test('IP allocation has no reserved IP control and prioritizes a wide notes column', () => {
+  const ipSection = panel.slice(panel.indexOf("{loaded && tab === 'ips'"), panel.indexOf("{loaded && tab === 'connections'"));
+  const allocationTable = ipSection.slice(ipSection.indexOf('<table className="system-config-table system-config-ip-table">'));
+  assert.doesNotMatch(ipSection, /예약 IP|is_reserved|reserved1/);
+  assert.doesNotMatch(allocationTable, /<th>상태<\/th>|'예약' : '사용'/);
+  assert.match(allocationTable, /<th>IP 주소<\/th><th>비고<\/th><th>관리<\/th>/);
+  assert.match(allocationTable, /colSpan=\{5\}>등록된 IP가 없습니다/);
+  assert.match(styles, /\.system-config-ip-table \{ min-width: 900px; table-layout: fixed; \}/);
+  assert.match(styles, /\.system-config-ip-table th:nth-child\(4\) \{ width: 38%; \}/);
+  assert.match(ipSection, /onSubmit=\{saveIp\}/);
+  assert.match(ipSection, /onClick=\{\(\) => selectIpForEdit\(item\)\}/);
 });
