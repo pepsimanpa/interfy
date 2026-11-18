@@ -1,7 +1,10 @@
 """Regression tests for the consolidated export screen's backend operations."""
+import asyncio
+import io
+import json
 import unittest
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -15,6 +18,8 @@ from app.routers.export import (
     SelectedNodeExportRequest, selected_node_messages, export_selected_nodes,
 )
 from app.routers.collaboration import build_partner_package, PartnerExportRequest
+from app.routers.partial_update import _partner_relation_baseline, _prepare_partial_messages, _load_existing_messages, apply_partial_update
+from app.routers.project_json import export_project_json
 
 
 class UnifiedExportTests(unittest.TestCase):
@@ -131,6 +136,100 @@ class UnifiedExportTests(unittest.TestCase):
         self.assertEqual(len(both["messages"]), 2)
         self.assertEqual(tx["collaboration"]["selected_targets"], ["Node_A"])
         self.assertEqual(tx["collaboration"]["base_messages"], tx["messages"])
+
+
+    def test_scoped_partner_json_hides_other_nodes_even_in_comparison_snapshot(self):
+        example = {
+            "format": "interfy-project", "version": 1,
+            "project": {"name": "Scope Test"},
+            "messages": [
+                {"name": "Test", "struct_name": "T_TEST",
+                 "tx_targets": ["Node_A", "Node_C"],
+                 "rx_targets": ["Node_B", "Node_D", "Node_E"], "fields": []},
+            ],
+            "groups": [], "labels": [],
+            "integration_targets": [
+                {"name": name} for name in ["Node_A", "Node_B", "Node_C", "Node_D", "Node_E"]
+            ],
+        }
+        self.assertFalse(PartnerExportRequest(target_ids=[1]).restrict_relations)
+        normal = build_partner_package(example, ["Node_A", "Node_B"])
+        self.assertEqual(normal["messages"][0]["rx_targets"], ["Node_B", "Node_D", "Node_E"])
+        scoped = build_partner_package(
+            example, ["Node_A", "Node_B"], restrict_relations=True,
+        )
+        self.assertEqual(scoped["messages"][0]["tx_targets"], ["Node_A"])
+        self.assertEqual(scoped["messages"][0]["rx_targets"], ["Node_B"])
+        self.assertEqual(
+            {n["name"] for n in scoped["integration_targets"]}, {"Node_A", "Node_B"},
+        )
+        self.assertTrue(scoped["collaboration"]["restrict_relations"])
+        self.assertEqual(scoped["collaboration"]["base_messages"], scoped["messages"])
+        self.assertEqual(scoped["collaboration"]["base_targets"], scoped["integration_targets"])
+        self.assertNotIn("Node_C", json.dumps(scoped))
+        self.assertNotIn("Node_D", json.dumps(scoped))
+        self.assertNotIn("Node_E", json.dumps(scoped))
+
+    def test_scoped_partner_relation_modes_and_new_nodes(self):
+        c = IntegrationTarget(project_id=self.project.id, name="Node_C")
+        d = IntegrationTarget(project_id=self.project.id, name="Node_D")
+        self.db.add_all([c, d])
+        self.db.flush()
+        self.db.add_all([
+            MessageTxTargetItem(message_id=self.sent.id, target_id=c.id),
+            MessageRxTargetItem(message_id=self.sent.id, target_id=self.b.id),
+            MessageRxTargetItem(message_id=self.sent.id, target_id=d.id),
+        ])
+        self.db.commit()
+
+        original = json.loads(export_project_json(self.project.id, self.db, self.user).body)
+        pack = build_partner_package(
+            original, ["Node_A", "Node_B"], project_id=self.project.id, restrict_relations=True,
+        )
+        edited = next(m for m in pack["messages"] if m["struct_name"] == "T_SENT")
+        self.assertEqual(edited["tx_targets"], ["Node_A"])
+        self.assertEqual(edited["rx_targets"], ["Node_B"])
+        edited["rx_targets"] = ["Node_F"]  # B removed; F added in offline editor
+        pack["integration_targets"].append({"name": "Node_F", "description": "Partner created node"})
+
+        old_messages = _load_existing_messages(self.db, self.project.id)
+        baseline = _partner_relation_baseline(pack, "PARTIAL")
+        partial = _prepare_partial_messages(
+            old_messages, [edited], "REPLACE", "REPLACE", "PARTIAL", baseline,
+        )[0]
+        self.assertEqual(partial["tx_targets"], ["Node_A", "Node_C"])
+        self.assertEqual(partial["rx_targets"], ["Node_D", "Node_F"])
+
+        ignored = _prepare_partial_messages(
+            old_messages, [edited], "REPLACE", "REPLACE", "IGNORE",
+        )[0]
+        self.assertEqual(ignored["rx_targets"], ["Node_B", "Node_D"])
+        replaced = _prepare_partial_messages(
+            old_messages, [edited], "REPLACE", "REPLACE", "REPLACE",
+        )[0]
+        self.assertEqual(replaced["rx_targets"], ["Node_F"])
+
+        upload = UploadFile(
+            filename="partner.json",
+            file=io.BytesIO(json.dumps(pack, ensure_ascii=False).encode("utf-8")),
+        )
+        result = asyncio.run(apply_partial_update(
+            self.project.id, file=upload, selected_names='["T_SENT"]',
+            field_mode="REPLACE", protocol_mode="REPLACE", relation_mode="PARTIAL",
+            db=self.db, current_user=self.user,
+        ))
+        self.assertEqual(result["updated_count"], 1)
+        updated = next(m for m in _load_existing_messages(self.db, self.project.id) if m.id == self.sent.id)
+        self.assertEqual({n.name for n in updated.tx_targets}, {"Node_A", "Node_C"})
+        self.assertEqual({n.name for n in updated.rx_targets}, {"Node_D", "Node_F"})
+        self.assertIsNotNone(self.db.query(IntegrationTarget).filter_by(project_id=self.project.id, name="Node_F").first())
+        # Reapplying the same delta must not add duplicate nodes or relationships.
+        same_again = _prepare_partial_messages(
+            _load_existing_messages(self.db, self.project.id), [edited],
+            "REPLACE", "REPLACE", "PARTIAL", baseline,
+        )[0]
+        self.assertEqual(same_again["rx_targets"], ["Node_D", "Node_F"])
+
 
 
 if __name__ == "__main__":
