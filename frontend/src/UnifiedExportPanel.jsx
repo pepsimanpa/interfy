@@ -28,6 +28,7 @@ export default function UnifiedExportPanel({
   const [selectedLabelId, setSelectedLabelId] = useState('');
   const [selectedNodeIds, setSelectedNodeIds] = useState([]);
   const [direction, setDirection] = useState('all');
+  const [restrictRelations, setRestrictRelations] = useState(false);
   const [format, setFormat] = useState('header');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -128,7 +129,11 @@ export default function UnifiedExportPanel({
       path = '/labels/' + label.id + '/export/' + routeFormat;
       filename = baseName + '_' + cleanFilename(label.name) + '.' + ext;
     } else {
-      const payload = { target_ids: selectedNodeIds, direction };
+      const payload = {
+        target_ids: selectedNodeIds,
+        direction,
+        ...(format === 'json' ? { restrict_relations: restrictRelations } : {}),
+      };
       path = format === 'json'
         ? '/projects/' + project.id + '/collaboration/export'
         : '/projects/' + project.id + '/export/nodes/' + routeFormat;
@@ -161,7 +166,9 @@ export default function UnifiedExportPanel({
         ? '선택 노드 ' + selectedNodeIds.length + '개 (' + directionName + ')의 메시지와 참조 자료형'
         : '출력할 노드를 선택하세요.';
   const jsonMessage = scope === 'nodes'
-    ? '노드 JSON에는 협력사 작업을 위한 원본 비교 정보가 포함됩니다.'
+    ? (restrictRelations
+      ? '선택한 노드만 송수신 목록에 포함합니다. 부분 업데이트에서 송수신 부분 반영을 선택하면 다른 노드의 관계를 유지할 수 있습니다.'
+      : '노드 JSON에는 협력사 작업을 위한 원본 비교 정보가 포함됩니다.')
     : '프로젝트/태그 JSON은 기존 오프라인 편집기에서 열 수 있으며 메시지 변경은 부분 업데이트에서 선택해 반영합니다.';
 
   return (
@@ -234,6 +241,12 @@ export default function UnifiedExportPanel({
                 ))}
               </div>
             </div>
+            {format === 'json' && (
+              <label className="unified-export-restrict-relations">
+                <input type="checkbox" checked={restrictRelations} onChange={event => setRestrictRelations(event.target.checked)}/>
+                <span>선택한 노드의 송수신 관계만 포함</span>
+              </label>
+            )}
           </fieldset>
         </div>
 
