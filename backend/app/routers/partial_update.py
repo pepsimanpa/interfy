@@ -95,6 +95,7 @@ def _partner_relation_baseline(data: dict[str, Any], mode: str) -> dict[str, dic
     if not isinstance(base_rows, list):
         raise HTTPException(status_code=422, detail="부분 반영 기준(base_messages)이 없습니다. 협력업체 JSON을 다시 출력해 주세요.")
     baseline: dict[str, dict[str, Any]] = {}
+    original_by_id: dict[int, dict[str, Any]] = {}
     for row in base_rows:
         if not isinstance(row, dict):
             raise HTTPException(status_code=422, detail="송수신 부분 반영 기준이 올바르지 않습니다.")
@@ -104,6 +105,18 @@ def _partner_relation_baseline(data: dict[str, Any], mode: str) -> dict[str, dic
         if any(not isinstance(row.get(role), list) for role in ("tx_targets", "rx_targets")):
             raise HTTPException(status_code=422, detail="송수신 부분 반영 기준의 노드 목록이 올바르지 않습니다.")
         baseline[name] = row
+        if isinstance(row.get("interfy_id"), int):
+            original_by_id[row["interfy_id"]] = row
+
+    # The offline editor retains stable IDs when a message is renamed. If that
+    # rename was applied first, use the original snapshot for the new name too.
+    for incoming in data.get("messages", []):
+        if not isinstance(incoming, dict):
+            continue
+        original = original_by_id.get(incoming.get("interfy_id")) if isinstance(incoming.get("interfy_id"), int) else None
+        name = str(incoming.get("struct_name") or "").strip().lower()
+        if original is not None and name and name not in baseline:
+            baseline[name] = original
     return baseline
 
 
