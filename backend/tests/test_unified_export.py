@@ -170,6 +170,25 @@ class UnifiedExportTests(unittest.TestCase):
         self.assertNotIn("Node_D", json.dumps(scoped))
         self.assertNotIn("Node_E", json.dumps(scoped))
 
+    def test_partial_relations_require_baseline_and_track_renamed_message_identity(self):
+        with self.assertRaises(HTTPException) as error:
+            _partner_relation_baseline({"messages": []}, "PARTIAL")
+        self.assertEqual(error.exception.status_code, 422)
+
+        renamed = {
+            "collaboration": {
+                "format": "interfy-partner-v1",
+                "base_messages": [{
+                    "struct_name": "T_ORIGINAL", "interfy_id": 42,
+                    "tx_targets": ["Node_A"], "rx_targets": ["Node_B"],
+                }],
+            },
+            "messages": [{"struct_name": "T_RENAMED", "interfy_id": 42}],
+        }
+        baseline = _partner_relation_baseline(renamed, "PARTIAL")
+        self.assertEqual(baseline["t_renamed"]["tx_targets"], ["Node_A"])
+        self.assertEqual(baseline["t_renamed"]["rx_targets"], ["Node_B"])
+
     def test_scoped_partner_relation_modes_and_new_nodes(self):
         c = IntegrationTarget(project_id=self.project.id, name="Node_C")
         d = IntegrationTarget(project_id=self.project.id, name="Node_D")
