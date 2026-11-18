@@ -11,8 +11,8 @@ const EMPTY_CONNECTION = { server_binding_id: '', client_binding_id: '', note: '
 
 function NodePicker({ nodes, value, onChange, label = '노드' }) {
   return (
-    <label>{label}
-      <select value={value} onChange={event => onChange(event.target.value)}>
+    <label><span className="system-config-label-text">{label}</span>
+                <select value={value} onChange={event => onChange(event.target.value)}>
         <option value="">노드 선택</option>
         {nodes.map(node => <option key={node.node_id} value={node.node_id}>{node.name}</option>)}
       </select>
@@ -271,12 +271,12 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
                 <>
                   <p className="system-config-node-choice">선택 노드: <strong>{node.name}</strong></p>
                   <form className="system-config-form system-config-form-compact" onSubmit={saveNode}>
-              <label>Device ID<input type="number" min="1" placeholder="예: 7" value={profile.device_id ?? ''} onChange={e => setProfile({ ...profile, device_id: e.target.value })}/></label>
-              <label>탑재 HW<input value={profile.hardware_name || ''} maxLength={120} placeholder="예: 체계관리기" onChange={e => setProfile({ ...profile, hardware_name: e.target.value })}/></label>
-              <label>Hostname<input value={profile.hostname || ''} maxLength={120} placeholder="장치 이름" onChange={e => setProfile({ ...profile, hostname: e.target.value })}/></label>
-              <label>SW 고유 ID<input value={profile.software_id || ''} maxLength={120} onChange={e => setProfile({ ...profile, software_id: e.target.value })}/></label>
-              <label>HW 고유 ID<input value={profile.hardware_id || ''} maxLength={120} onChange={e => setProfile({ ...profile, hardware_id: e.target.value })}/></label>
-              <label className="wide">비고<textarea value={profile.note || ''} onChange={e => setProfile({ ...profile, note: e.target.value })}/></label>
+              <label><span className="system-config-label-text">Device ID</span><input type="number" min="1" placeholder="예: 7" value={profile.device_id ?? ''} onChange={e => setProfile({ ...profile, device_id: e.target.value })}/></label>
+              <label><span className="system-config-label-text">탑재 HW</span><input value={profile.hardware_name || ''} maxLength={120} placeholder="예: 체계관리기" onChange={e => setProfile({ ...profile, hardware_name: e.target.value })}/></label>
+              <label><span className="system-config-label-text">Hostname</span><input value={profile.hostname || ''} maxLength={120} placeholder="장치 이름" onChange={e => setProfile({ ...profile, hostname: e.target.value })}/></label>
+              <label><span className="system-config-label-text">SW 고유 ID</span><input value={profile.software_id || ''} maxLength={120} onChange={e => setProfile({ ...profile, software_id: e.target.value })}/></label>
+              <label><span className="system-config-label-text">HW 고유 ID</span><input value={profile.hardware_id || ''} maxLength={120} onChange={e => setProfile({ ...profile, hardware_id: e.target.value })}/></label>
+              <label className="wide"><span className="system-config-label-text">비고</span><textarea value={profile.note || ''} onChange={e => setProfile({ ...profile, note: e.target.value })}/></label>
               <div className="system-config-actions"><button disabled={busy} type="submit"><Save size={15}/> 저장</button></div>
             </form>
                 </>
@@ -310,9 +310,9 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
             <h3>{editingIp == null ? 'IP 할당 추가' : 'IP 할당 수정'}</h3>
             <form className="system-config-form system-config-form-compact" onSubmit={saveIp}>
               <NodePicker nodes={nodes} value={ipDraft.node_id} onChange={value => setIpDraft({ ...ipDraft, node_id: value })}/>
-              <label>NIC / IP 구분<input maxLength={120} placeholder="예: NIC1, eth0" value={ipDraft.interface_name} onChange={e => setIpDraft({ ...ipDraft, interface_name: e.target.value })}/></label>
-              <label>IP 주소<input required placeholder="192.168.7.70" value={ipDraft.ip_address} onChange={e => setIpDraft({ ...ipDraft, ip_address: e.target.value })}/></label>
-              <label className="wide">비고<input value={ipDraft.note} onChange={e => setIpDraft({ ...ipDraft, note: e.target.value })}/></label>
+              <label><span className="system-config-label-text">NIC / IP 구분</span><input maxLength={120} placeholder="예: NIC1, eth0" value={ipDraft.interface_name} onChange={e => setIpDraft({ ...ipDraft, interface_name: e.target.value })}/></label>
+              <label><span className="system-config-label-text">IP 주소</span><input required placeholder="192.168.7.70" value={ipDraft.ip_address} onChange={e => setIpDraft({ ...ipDraft, ip_address: e.target.value })}/></label>
+              <label className="wide"><span className="system-config-label-text">비고</span><input value={ipDraft.note} onChange={e => setIpDraft({ ...ipDraft, note: e.target.value })}/></label>
               <div className="system-config-actions">
                 {editingIp != null && <button type="button" className="ghost" onClick={clearIpForm}>수정 취소</button>}
                 <button type="submit" disabled={busy || !ipDraft.node_id || !ipDraft.ip_address.trim()}><Save size={15}/> {editingIp == null ? 'IP 추가' : '변경 저장'}</button>
@@ -339,29 +339,29 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
           <section className="card system-config-input">
             <h3>{editingPort == null ? 'IP / PORT 바인딩 추가' : 'IP / PORT 바인딩 수정'}</h3>
             <form className="system-config-form system-config-form-compact" onSubmit={savePort}>
-              <label>IP / NIC
+              <label><span className="system-config-label-text">IP / NIC</span>
                 <select required value={portDraft.ip_assignment_id} disabled={editingPort !== null} onChange={e => setPortDraft({ ...portDraft, ip_assignment_id: e.target.value })}>
                   <option value="">IP 선택</option>
                   {ips.map(item => <option key={item.id} value={item.id}>{item.node_name} · {item.interface_name || 'NIC'} · {item.ip_address}</option>)}
                 </select>
               </label>
-              <label>프로토콜
+              <label><span className="system-config-label-text">프로토콜</span>
                 <select value={portDraft.protocol} onChange={e => setPortDraft({ ...portDraft, protocol: e.target.value })}>
                   <option value="TCP">TCP</option><option value="UDP">UDP</option>
                 </select>
               </label>
-              <label>바인딩 방식
+              <label><span className="system-config-label-text">바인딩 방식</span>
                 <select value={portDraft.port_mode} onChange={e => setPortDraft({ ...portDraft, port_mode: e.target.value, port: e.target.value === 'AUTO' ? '' : portDraft.port })}>
                   <option value="FIXED">고정 포트</option><option value="AUTO">자동 (AUTO)</option>
                 </select>
               </label>
-              <label>포트 번호
+              <label><span className="system-config-label-text">포트 번호</span>
                 <input type="number" min={1} max={65535} required={portDraft.port_mode === 'FIXED'}
                   disabled={portDraft.port_mode === 'AUTO'} value={portDraft.port}
                   placeholder={portDraft.port_mode === 'AUTO' ? '자동 바인딩' : '예: 15010'}
                   onChange={e => setPortDraft({ ...portDraft, port: e.target.value })}/>
               </label>
-              <label className="wide">용도 / 비고
+              <label className="wide"><span className="system-config-label-text">용도 / 비고</span>
                 <input value={portDraft.description} maxLength={255} placeholder="예: 상태 정보 수신" onChange={e => setPortDraft({ ...portDraft, description: e.target.value })}/>
               </label>
               <div className="system-config-actions">
@@ -402,7 +402,7 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
           <section className="card system-config-input">
             <h3>{editingConnection == null ? '통신 연결 추가' : '통신 연결 수정'}</h3>
             <form className="system-config-form system-config-form-compact" onSubmit={saveConnection}>
-              <label>Server IP / PORT 바인딩
+              <label><span className="system-config-label-text">Server IP / PORT 바인딩</span>
                 <select required value={connectionDraft.server_binding_id} onChange={e => setConnectionDraft({
                   ...connectionDraft, server_binding_id: e.target.value, client_binding_id: '',
                 })}>
@@ -412,7 +412,7 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
                   </option>)}
                 </select>
               </label>
-              <label>Client IP / PORT 바인딩
+              <label><span className="system-config-label-text">Client IP / PORT 바인딩</span>
                 <select required value={connectionDraft.client_binding_id} onChange={e => setConnectionDraft({ ...connectionDraft, client_binding_id: e.target.value })}>
                   <option value="">Client 바인딩 선택</option>
                   {compatibleClientBindings.map(item => <option key={item.id} value={item.id}>
@@ -420,10 +420,10 @@ export default function SystemConfigurationPanel({ api, projectId, integrationTa
                   </option>)}
                 </select>
               </label>
-              <label>프로토콜
+              <label><span className="system-config-label-text">프로토콜</span>
                 <input disabled value={chosenServerBinding?.protocol || 'Server 선택 시 자동 결정'} readOnly/>
               </label>
-              <label className="wide">비고
+              <label className="wide"><span className="system-config-label-text">비고</span>
                 <input value={connectionDraft.note} onChange={e => setConnectionDraft({ ...connectionDraft, note: e.target.value })}/>
               </label>
               <div className="system-config-actions">
