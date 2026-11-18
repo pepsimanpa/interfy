@@ -103,3 +103,15 @@ test('IP allocation has no reserved IP control and prioritizes a wide notes colu
   assert.match(ipSection, /onSubmit=\{saveIp\}/);
   assert.match(ipSection, /onClick=\{\(\) => selectIpForEdit\(item\)\}/);
 });
+
+
+test('compact editor fields display labels beside controls on desktop', () => {
+  assert.equal((panel.match(/className="system-config-label-text"/g) || []).length, 19);
+  assert.match(panel, /<label><span className="system-config-label-text">Device ID<\/span><input/);
+  assert.match(panel, /<label><span className="system-config-label-text">탑재 HW<\/span><input/);
+  assert.match(panel, /<span className="system-config-label-text">\{label\}<\/span>/);
+  assert.match(panel, /<span className="system-config-label-text">Server IP \/ PORT 바인딩<\/span>/);
+  assert.match(styles, /\.system-config-form-compact > label \{[\s\S]*?grid-template-columns: 170px minmax\(0, 1fr\);/);
+  assert.match(styles, /\.system-config-form-compact input, \.system-config-form-compact select, \.system-config-form-compact textarea \{ min-width: 0; width: 100%; \}/);
+  assert.match(styles, /@media \(max-width: 560px\) \{[\s\S]*?\.system-config-form-compact > label \{ grid-template-columns: minmax\(0, 1fr\); gap: 4px; \}/);
+});
